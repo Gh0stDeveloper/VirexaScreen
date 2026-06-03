@@ -10,7 +10,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,10 +94,6 @@ class PlayerService : MediaSessionService() {
             .setOngoing(snapshot.isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            .setStyle(
-                MediaNotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
             .addAction(android.R.drawable.ic_media_previous, getString(R.string.action_previous), serviceAction(ACTION_PREVIOUS))
             .addAction(
                 if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,

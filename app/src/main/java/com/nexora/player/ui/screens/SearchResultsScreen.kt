@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.ui.components.MediaItemRow
+import com.nexora.player.ui.components.PremiumHeroCard
+import com.nexora.player.ui.components.StatPill
 
 @Composable
 fun SearchResultsScreen(
@@ -36,26 +38,22 @@ fun SearchResultsScreen(
     val total = audio.size + videos.size
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            ElevatedCard {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Resultados de búsqueda", style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        if (total == 0) "No hay coincidencias para \"$query\"" else "$total coincidencias encontradas",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            PremiumHeroCard(
+                title = "Resultados de búsqueda",
+                subtitle = if (total == 0) "No hay coincidencias para "$query"" else "$total coincidencias encontradas",
+            ) {
+                StatPill("$total total")
             }
         }
 
         if (audio.isNotEmpty()) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    AssistChip(onClick = {}, label = { Text("Audio / Audios (${audio.size})") })
+                    AssistChip(onClick = {}, label = { Text("Audio (${audio.size})") })
                 }
             }
             items(audio, key = { it.id }) { item ->

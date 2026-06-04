@@ -18,6 +18,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.nexora.player.MainActivity
 import com.nexora.player.R
+import com.nexora.player.data.model.MediaEntry
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -85,10 +86,12 @@ class PlayerService : MediaSessionService() {
         }
 
         val current = snapshot.currentItem
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val largeIcon = current?.let { resolveNotificationArtwork(it) }
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_playback)
             .setContentTitle(current?.title ?: getString(R.string.app_name))
             .setContentText(current?.artist?.ifBlank { current.album } ?: "Reproduciendo")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(current?.artist?.ifBlank { current.album } ?: "Reproduciendo"))
             .setContentIntent(contentIntent())
             .setOnlyAlertOnce(true)
             .setOngoing(snapshot.isPlaying)
@@ -102,7 +105,12 @@ class PlayerService : MediaSessionService() {
             )
             .addAction(android.R.drawable.ic_media_next, getString(R.string.action_next), serviceAction(ACTION_NEXT))
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.action_stop), serviceAction(ACTION_STOP))
-            .build()
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        val notification = builder.build()
 
         val notificationManager = NotificationManagerCompat.from(this)
         notificationManager.notify(NOTIFICATION_ID, notification)
@@ -115,6 +123,27 @@ class PlayerService : MediaSessionService() {
             }
         } else {
             stopForeground(STOP_FOREGROUND_DETACH)
+        }
+    }
+
+    private fun resolveNotificationArtwork(entry: MediaEntry): Bitmap? {
+        val retriever = android.media.MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(this, entry.uri)
+            when (entry.kind) {
+                com.nexora.player.data.model.MediaKind.AUDIO -> retriever.embeddedPicture?.let { data ->
+                    android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size)
+                }
+                com.nexora.player.data.model.MediaKind.VIDEO -> retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: retriever.getFrameAtTime(1_000_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            }
+        } catch (_: Throwable) {
+            null
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Throwable) {
+            }
         }
     }
 

@@ -15,6 +15,22 @@ android {
         versionCode = 3
         versionName = "0.3.0"
     }
+    
+    signingConfigs {
+        create("release") {
+            // Ruta del .jks que reconstruyes en GitHub Actions
+            storeFile = file("nexoraplayer-release.jks")
+            // Variables de entorno / GitHub Secrets
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+
+            // Firmas APK
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
+    }
 
     buildFeatures {
         compose = true

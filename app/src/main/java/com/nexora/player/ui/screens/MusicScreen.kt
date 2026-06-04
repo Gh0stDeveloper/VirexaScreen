@@ -1,16 +1,31 @@
 package com.nexora.player.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.data.model.SortMode
 import com.nexora.player.ui.components.MediaItemRow
+import com.nexora.player.ui.components.PremiumHeroCard
+import com.nexora.player.ui.components.PremiumSectionHeader
 import com.nexora.player.ui.components.SortSelector
+import com.nexora.player.ui.components.StatPill
 
 @Composable
 fun MusicScreen(
@@ -24,14 +39,23 @@ fun MusicScreen(
     onSortSelected: (SortMode) -> Unit
 ) {
     Column(modifier = modifier.fillMaxSize()) {
+        PremiumHeroCard(
+            title = "Tu biblioteca de audio",
+            subtitle = "Portadas, cola, favoritos y reproducción continua en una vista más limpia y premium.",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            StatPill("${items.size} pistas")
+        }
+
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FilterChip(
                 selected = false,
                 onClick = onRefresh,
-                label = { Text("Actualizar") }
+                label = { Text("Actualizar") },
+                leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) }
             )
             SortSelector(
                 selected = sortMode,
@@ -49,10 +73,16 @@ fun MusicScreen(
             )
         }
 
+        PremiumSectionHeader(
+            title = "Canciones",
+            subtitle = "Toca una portada para abrir la reproducción",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+        )
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(items, key = { it.id }) { item ->
                 MediaItemRow(

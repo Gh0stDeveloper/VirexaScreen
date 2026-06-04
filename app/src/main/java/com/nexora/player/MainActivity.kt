@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -64,7 +63,7 @@ class MainActivity : ComponentActivity() {
                     AppThemeMode.LIGHT -> false
                     AppThemeMode.DARK -> true
                 },
-                dynamicColor = false
+                dynamicColor = state.preferences.dynamicColor
             ) {
                 val destinations = listOf(
                     AppDestination.MUSIC,
@@ -79,7 +78,10 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
-                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                             GreetingBanner(greeting = greeting)
                             SearchField(query = state.search, onQueryChange = viewModel::setSearch)
                         }
@@ -117,7 +119,7 @@ class MainActivity : ComponentActivity() {
 
                 if (showNowPlaying) {
                     ModalBottomSheet(onDismissRequest = { showNowPlaying = false }) {
-                        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 420.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp)) {
                             NowPlayingScreen()
                         }
                     }
@@ -228,15 +230,15 @@ private fun AppContent(
 private fun rememberGreeting(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when (hour) {
-        in 5..11 -> "Buenos días"
+        in 0..11 -> "Buenos días"
         in 12..18 -> "Buenas tardes"
         else -> "Buenas noches"
     }
 }
 
 private fun iconFor(destination: AppDestination) = when (destination) {
-    AppDestination.MUSIC -> Icons.Filled.LibraryMusic
-    AppDestination.VIDEOS -> Icons.Filled.Movie
+    AppDestination.MUSIC -> Icons.Filled.MusicNote
+    AppDestination.VIDEOS -> Icons.Filled.OndemandVideo
     AppDestination.QUEUE -> Icons.Filled.QueueMusic
     AppDestination.PLAYLISTS -> Icons.Filled.PlaylistPlay
     AppDestination.FAVORITES -> Icons.Filled.Favorite

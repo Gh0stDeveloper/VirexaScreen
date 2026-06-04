@@ -1,3 +1,4 @@
+
 package com.nexora.player
 
 import android.Manifest
@@ -15,10 +16,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -30,6 +33,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nexora.player.data.model.AppDestination
 import com.nexora.player.data.model.AppThemeMode
+import com.nexora.player.data.model.MediaKind
 import com.nexora.player.ui.components.BottomPlayerBar
 import com.nexora.player.ui.components.GreetingBanner
 import com.nexora.player.ui.components.SearchField
@@ -57,6 +61,12 @@ class MainActivity : ComponentActivity() {
             var showNowPlaying by rememberSaveable { mutableStateOf(false) }
             val greeting = rememberGreeting()
 
+            LaunchedEffect(state.currentItem?.id, state.currentItem?.kind) {
+                if (state.currentItem?.kind == MediaKind.VIDEO) {
+                    showNowPlaying = true
+                }
+            }
+
             NexoraTheme(
                 darkTheme = when (state.preferences.themeMode) {
                     AppThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
@@ -78,10 +88,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             GreetingBanner(greeting = greeting)
                             SearchField(query = state.search, onQueryChange = viewModel::setSearch)
                         }
@@ -119,7 +126,7 @@ class MainActivity : ComponentActivity() {
 
                 if (showNowPlaying) {
                     ModalBottomSheet(onDismissRequest = { showNowPlaying = false }) {
-                        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 520.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 560.dp)) {
                             NowPlayingScreen()
                         }
                     }
@@ -230,15 +237,15 @@ private fun AppContent(
 private fun rememberGreeting(): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when (hour) {
-        in 0..11 -> "Buenos días"
+        in 5..11 -> "Buenos días"
         in 12..18 -> "Buenas tardes"
         else -> "Buenas noches"
     }
 }
 
 private fun iconFor(destination: AppDestination) = when (destination) {
-    AppDestination.MUSIC -> Icons.Filled.MusicNote
-    AppDestination.VIDEOS -> Icons.Filled.OndemandVideo
+    AppDestination.MUSIC -> Icons.Filled.LibraryMusic
+    AppDestination.VIDEOS -> Icons.Filled.Movie
     AppDestination.QUEUE -> Icons.Filled.QueueMusic
     AppDestination.PLAYLISTS -> Icons.Filled.PlaylistPlay
     AppDestination.FAVORITES -> Icons.Filled.Favorite

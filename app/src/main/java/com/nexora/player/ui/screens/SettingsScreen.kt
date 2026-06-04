@@ -1,11 +1,16 @@
+
 package com.nexora.player.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -18,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nexora.player.data.model.AppThemeMode
-import com.nexora.player.ui.components.PremiumHeroCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,15 +37,13 @@ fun SettingsScreen(
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        PremiumHeroCard(
-            title = "Ajustes",
-            subtitle = "Tema, color dinámico y estado actual de la plataforma.",
-        ) { }
+        Text("Ajustes", style = MaterialTheme.typography.headlineMedium)
 
-        ElevatedCard(
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ElevatedCard {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text("Tema")
                 SingleChoiceSegmentedButtonRow {
                     SegmentedButton(
@@ -60,21 +62,43 @@ fun SettingsScreen(
                         shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
                     ) { Text("Oscuro") }
                 }
-                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                     Text("Color dinámico")
                     Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
                 }
             }
         }
 
-        ElevatedCard(
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Estado actual")
+        ElevatedCard {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Estado técnico")
                 Text("Persistencia local: Room + DataStore")
                 Text("Reproductor base: Media3 / ExoPlayer")
-                Text("Listo para portadas, notificación de medios y reproducción de bloqueo.")
+                Text("Preparado para listas, favoritos, historial y mejoras de interfaz.")
+            }
+        }
+
+        ElevatedCard {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Desarrollador", style = MaterialTheme.typography.titleMedium)
+                Text("Ghost Developer")
+                Divider()
+                Text("Redes")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = {}, label = { Text("TikTok") })
+                    AssistChip(onClick = {}, label = { Text("YouTube") })
+                }
+                Text(
+                    "Sección informativa para mostrar la autoría, presencia social y contacto del proyecto.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

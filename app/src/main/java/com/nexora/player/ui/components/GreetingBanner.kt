@@ -16,7 +16,7 @@ fun GreetingBanner(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
             text = greeting,
@@ -28,7 +28,7 @@ fun GreetingBanner(
             style = MaterialTheme.typography.headlineSmall
         )
         Text(
-            text = "Biblioteca local, portadas automáticas, cola continua y reproducción en segundo plano.",
+            text = "Biblioteca local, búsqueda en tiempo real y reproducción continua.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

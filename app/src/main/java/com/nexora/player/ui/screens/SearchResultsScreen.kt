@@ -1,3 +1,4 @@
+
 package com.nexora.player.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
@@ -21,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.ui.components.MediaItemRow
-import com.nexora.player.ui.components.PremiumHeroCard
-import com.nexora.player.ui.components.StatPill
 
 @Composable
 fun SearchResultsScreen(
@@ -37,7 +36,7 @@ fun SearchResultsScreen(
 ) {
     val total = audio.size + videos.size
     val summaryText = if (total == 0) {
-        "No hay coincidencias para \"$query\""
+        "No hay coincidencias para "$query""
     } else {
         "$total coincidencias encontradas"
     }
@@ -49,10 +48,7 @@ fun SearchResultsScreen(
     ) {
         item {
             ElevatedCard {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Resultados de búsqueda", style = MaterialTheme.typography.headlineSmall)
                     Text(
                         text = summaryText,
@@ -65,10 +61,7 @@ fun SearchResultsScreen(
 
         if (audio.isNotEmpty()) {
             item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     AssistChip(onClick = {}, label = { Text("Audio / Audios (${audio.size})") })
                 }
             }
@@ -83,18 +76,12 @@ fun SearchResultsScreen(
         }
 
         if (audio.isNotEmpty() && videos.isNotEmpty()) {
-            item {
-                Spacer(Modifier.height(4.dp))
-                Divider()
-            }
+            item { Spacer(Modifier.height(4.dp)); Divider() }
         }
 
         if (videos.isNotEmpty()) {
             item {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     AssistChip(onClick = {}, label = { Text("Videos (${videos.size})") })
                 }
             }

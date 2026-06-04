@@ -1,3 +1,4 @@
+
 package com.nexora.player.playback
 
 import android.app.NotificationChannel
@@ -10,17 +11,17 @@ import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.nexora.player.MainActivity
 import com.nexora.player.R
-import com.nexora.player.data.model.MediaEntry
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class PlayerService : MediaSessionService() {
@@ -63,9 +64,7 @@ class PlayerService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession
-    }
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {
         serviceScope.cancel()
@@ -86,17 +85,22 @@ class PlayerService : MediaSessionService() {
         }
 
         val current = snapshot.currentItem
-        val largeIcon = current?.let { resolveNotificationArtwork(it) }
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val subtitle = when {
+            current?.artist?.isNotBlank() == true -> current.artist
+            current?.album?.isNotBlank() == true -> current.album
+            else -> "Reproduciendo"
+        }
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_playback)
+            .setLargeIcon(loadLargeIcon())
             .setContentTitle(current?.title ?: getString(R.string.app_name))
-            .setContentText(current?.artist?.ifBlank { current.album } ?: "Reproduciendo")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(current?.artist?.ifBlank { current.album } ?: "Reproduciendo"))
+            .setContentText(subtitle)
             .setContentIntent(contentIntent())
             .setOnlyAlertOnce(true)
-            .setOngoing(snapshot.isPlaying)
+            .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(android.R.drawable.ic_media_previous, getString(R.string.action_previous), serviceAction(ACTION_PREVIOUS))
             .addAction(
                 if (snapshot.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
@@ -105,45 +109,18 @@ class PlayerService : MediaSessionService() {
             )
             .addAction(android.R.drawable.ic_media_next, getString(R.string.action_next), serviceAction(ACTION_NEXT))
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.action_stop), serviceAction(ACTION_STOP))
+            .build()
 
-        if (largeIcon != null) {
-            builder.setLargeIcon(largeIcon)
-        }
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
 
-        val notification = builder.build()
-
-        val notificationManager = NotificationManagerCompat.from(this)
-        notificationManager.notify(NOTIFICATION_ID, notification)
-
-        if (snapshot.isPlaying) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
         } else {
-            stopForeground(STOP_FOREGROUND_DETACH)
-        }
-    }
-
-    private fun resolveNotificationArtwork(entry: MediaEntry): Bitmap? {
-        val retriever = android.media.MediaMetadataRetriever()
-        return try {
-            retriever.setDataSource(this, entry.uri)
-            when (entry.kind) {
-                com.nexora.player.data.model.MediaKind.AUDIO -> retriever.embeddedPicture?.let { data ->
-                    android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size)
-                }
-                com.nexora.player.data.model.MediaKind.VIDEO -> retriever.getFrameAtTime(0, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(1_000_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            }
-        } catch (_: Throwable) {
-            null
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Throwable) {
-            }
+            startForeground(NOTIFICATION_ID, notification)
         }
     }
 
@@ -156,6 +133,7 @@ class PlayerService : MediaSessionService() {
             ).apply {
                 description = "Controles de reproducción multimedia"
                 setShowBadge(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -181,5 +159,17 @@ class PlayerService : MediaSessionService() {
     private fun pendingIntentFlags(): Int {
         val immutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
         return PendingIntent.FLAG_UPDATE_CURRENT or immutable
+    }
+
+    private fun loadLargeIcon(): Bitmap? {
+        val drawable = ContextCompat.getDrawable(this, R.drawable.ic_launcher_foreground) ?: return null
+        if (drawable is BitmapDrawable) return drawable.bitmap
+        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 192
+        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 192
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 }

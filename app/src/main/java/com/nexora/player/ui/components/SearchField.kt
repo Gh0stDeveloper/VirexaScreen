@@ -11,8 +11,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.unit.dp
 
 @Composable
 fun SearchField(
@@ -33,7 +31,6 @@ fun SearchField(
         },
         placeholder = { Text("Buscar música, audios o videos") },
         singleLine = true,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors()
     )
 }

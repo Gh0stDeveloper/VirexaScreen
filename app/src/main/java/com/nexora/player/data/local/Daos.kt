@@ -43,6 +43,9 @@ interface PlaylistsDao {
 
     @Query("DELETE FROM playlist_items WHERE playlistId = :playlistId")
     suspend fun deleteItemsForPlaylist(playlistId: Long)
+
+    @Query("DELETE FROM playlist_items WHERE id = :itemId")
+    suspend fun deletePlaylistItem(itemId: Long)
 }
 
 @Dao

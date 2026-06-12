@@ -9,6 +9,7 @@ import com.nexora.player.data.preferences.AppPreferences
 import com.nexora.player.data.preferences.PreferencesRepository
 import com.nexora.player.data.repository.MediaStoreRepository
 import com.nexora.player.playback.PlayerEngine
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,8 +31,7 @@ data class AppUiState(
     val favorites: List<FavoriteMediaEntity> = emptyList(),
     val playlists: List<PlaylistEntity> = emptyList(),
     val history: List<PlaybackHistoryEntity> = emptyList(),
-    val preferences: AppPreferences = AppPreferences(),
-    val hiddenAudioIds: Set<Long> = emptySet()
+    val preferences: AppPreferences = AppPreferences()
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,8 +71,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     audioSort = prefs.audioSort,
                     videoSort = prefs.videoSort,
                     selectedDestination = prefs.lastDestination,
-                    preferences = prefs,
-                    hiddenAudioIds = prefs.hiddenAudioIds
+                    preferences = prefs
                 )
                 refreshLibrary()
             }
@@ -239,34 +238,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
-    fun toggleHiddenAudio(entry: MediaEntry) {
-        if (entry.kind != MediaKind.AUDIO) return
-        val hidden = _uiState.value.hiddenAudioIds
+    fun playlistItems(playlistId: Long): Flow<List<PlaylistItemEntity>> {
+        return database.playlistsDao().observeItems(playlistId)
+    }
+
+    fun removeFromPlaylist(itemId: Long) {
         viewModelScope.launch {
-            if (entry.id in hidden) {
-                preferencesRepository.removeHiddenAudioId(entry.id)
-            } else {
-                preferencesRepository.addHiddenAudioId(entry.id)
-            }
+            database.playlistsDao().deletePlaylistItem(itemId)
         }
     }
 
-    fun restoreHiddenAudio() {
-        viewModelScope.launch {
-            preferencesRepository.clearHiddenAudioIds()
-        }
+    fun playFavorite(favorite: FavoriteMediaEntity) {
+        play(favorite.toMediaEntry())
+    }
+
+    fun playPlaylistItem(item: PlaylistItemEntity) {
+        play(item.toMediaEntry())
+    }
+
+    private fun FavoriteMediaEntity.toMediaEntry(): MediaEntry {
+        return MediaEntry(
+            id = mediaId,
+            kind = if (mediaKind == MediaKind.VIDEO.name) MediaKind.VIDEO else MediaKind.AUDIO,
+            uri = android.net.Uri.parse(uriString),
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = durationMs
+        )
+    }
+
+    private fun PlaylistItemEntity.toMediaEntry(): MediaEntry {
+        return MediaEntry(
+            id = mediaId,
+            kind = if (mediaKind == MediaKind.VIDEO.name) MediaKind.VIDEO else MediaKind.AUDIO,
+            uri = android.net.Uri.parse(uriString),
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = durationMs
+        )
     }
 
     fun filteredAudio(): List<MediaEntry> {
         val q = _uiState.value.search.trim().lowercase()
-        val hidden = _uiState.value.hiddenAudioIds
-        return _uiState.value.audio.filter { entry ->
-            entry.id !in hidden && (
-                q.isBlank() ||
-                    entry.title.lowercase().contains(q) ||
-                    entry.artist.lowercase().contains(q) ||
-                    entry.album.lowercase().contains(q)
-            )
+        return _uiState.value.audio.filter {
+            q.isBlank() || it.title.lowercase().contains(q) || it.artist.lowercase().contains(q) || it.album.lowercase().contains(q)
         }
     }
 

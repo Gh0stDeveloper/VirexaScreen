@@ -44,6 +44,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.os.LocaleListCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nexora.player.data.local.PlaylistEntity
 import com.nexora.player.data.model.AppDestination
 import com.nexora.player.data.model.AppLanguage
 import com.nexora.player.data.model.AppThemeMode
@@ -55,6 +56,7 @@ import com.nexora.player.ui.screens.FavoritesScreen
 import com.nexora.player.ui.screens.HistoryScreen
 import com.nexora.player.ui.screens.MusicScreen
 import com.nexora.player.ui.screens.NowPlayingScreen
+import com.nexora.player.ui.screens.PlaylistDetailScreen
 import com.nexora.player.ui.screens.PlaylistsScreen
 import com.nexora.player.ui.screens.QueueScreen
 import com.nexora.player.ui.screens.SearchResultsScreen
@@ -79,9 +81,12 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
+
             var showNowPlaying by rememberSaveable { mutableStateOf(false) }
             var searchExpanded by rememberSaveable { mutableStateOf(false) }
             var lastAutoOpenedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+            var selectedPlaylistId by rememberSaveable { mutableStateOf<Long?>(null) }
+
             val greeting = rememberGreeting()
 
             LaunchedEffect(state.currentItem?.id, state.isPlaying) {
@@ -149,9 +154,15 @@ class MainActivity : AppCompatActivity() {
                                         selected = selected,
                                         onClick = {
                                             searchExpanded = false
+                                            selectedPlaylistId = null
                                             viewModel.setDestination(destination)
                                         },
-                                        icon = { Icon(iconFor(destination), contentDescription = stringResource(destination.labelRes)) },
+                                        icon = {
+                                            Icon(
+                                                iconFor(destination),
+                                                contentDescription = stringResource(destination.labelRes)
+                                            )
+                                        },
                                         label = { Text(stringResource(destination.labelRes)) }
                                     )
                                 }
@@ -162,7 +173,10 @@ class MainActivity : AppCompatActivity() {
                     AppContent(
                         modifier = Modifier.padding(padding),
                         viewModel = viewModel,
-                        state = state
+                        state = state,
+                        selectedPlaylistId = selectedPlaylistId,
+                        onOpenPlaylist = { selectedPlaylistId = it.id },
+                        onClosePlaylist = { selectedPlaylistId = null }
                     )
                 }
 
@@ -171,7 +185,9 @@ class MainActivity : AppCompatActivity() {
                     if (current?.kind == MediaKind.VIDEO) {
                         androidx.compose.ui.window.Dialog(
                             onDismissRequest = { showNowPlaying = false },
-                            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+                            properties = androidx.compose.ui.window.DialogProperties(
+                                usePlatformDefaultWidth = false
+                            )
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 NowPlayingScreen(modifier = Modifier.fillMaxSize())
@@ -220,7 +236,10 @@ class MainActivity : AppCompatActivity() {
 private fun AppContent(
     modifier: Modifier = Modifier,
     viewModel: AppViewModel,
-    state: AppUiState
+    state: AppUiState,
+    selectedPlaylistId: Long?,
+    onOpenPlaylist: (PlaylistEntity) -> Unit,
+    onClosePlaylist: () -> Unit
 ) {
     if (state.search.isNotBlank()) {
         SearchResultsScreen(
@@ -234,6 +253,29 @@ private fun AppContent(
             favoriteIds = viewModel.favoriteIds()
         )
         return
+    }
+
+    selectedPlaylistId?.let { playlistId ->
+        val playlist = state.playlists.firstOrNull { it.id == playlistId }
+        if (playlist != null) {
+            val items by viewModel.playlistItems(playlist.id)
+                .collectAsStateWithLifecycle(initialValue = emptyList())
+
+            PlaylistDetailScreen(
+                modifier = modifier,
+                playlist = playlist,
+                items = items,
+                onBack = onClosePlaylist,
+                onPlayItem = viewModel::playPlaylistItem,
+                onRemoveItem = { viewModel.removeFromPlaylist(it.id) },
+                onAddSongs = {
+                    // aquí luego conectas el selector de canciones para agregar a la playlist
+                }
+            )
+            return
+        } else {
+            onClosePlaylist()
+        }
     }
 
     when (state.selectedDestination) {
@@ -273,12 +315,14 @@ private fun AppContent(
             modifier = modifier,
             playlists = state.playlists,
             onCreatePlaylist = viewModel::createPlaylist,
-            onDeletePlaylist = viewModel::deletePlaylist
+            onDeletePlaylist = viewModel::deletePlaylist,
+            onOpenPlaylist = onOpenPlaylist
         )
 
         AppDestination.FAVORITES -> FavoritesScreen(
             modifier = modifier,
-            favorites = state.favorites
+            favorites = state.favorites,
+            onPlayFavorite = viewModel::playFavorite
         )
 
         AppDestination.HISTORY -> HistoryScreen(

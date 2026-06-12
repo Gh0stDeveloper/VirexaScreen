@@ -258,18 +258,19 @@ private fun AppContent(
     selectedPlaylistId?.let { playlistId ->
         val playlist = state.playlists.firstOrNull { it.id == playlistId }
         if (playlist != null) {
-            val items by viewModel.playlistItems(playlist.id)
+            val playlistItems by viewModel.playlistItems(playlist.id)
                 .collectAsStateWithLifecycle(initialValue = emptyList())
 
             PlaylistDetailScreen(
                 modifier = modifier,
                 playlist = playlist,
-                items = items,
+                playlistItems = playlistItems,
+                availableSongs = viewModel.filteredAudio(),
                 onBack = onClosePlaylist,
                 onPlayItem = viewModel::playPlaylistItem,
                 onRemoveItem = { viewModel.removeFromPlaylist(it.id) },
-                onAddSongs = {
-                    // aquí luego conectas el selector de canciones para agregar a la playlist
+                onAddSong = { song ->
+                    viewModel.addToPlaylist(playlist, song)
                 }
             )
             return
@@ -288,7 +289,7 @@ private fun AppContent(
             onPlay = viewModel::playFromLibrary,
             onToggleFavorite = viewModel::toggleFavorite,
             onAddToPlaylist = viewModel::addToPlaylist,
-            onHideFromLibrary = viewModel::toggleHiddenAudio,
+            onHideFromLibrary = { },
             onRefresh = viewModel::refreshLibrary,
             onSortSelected = viewModel::setAudioSort
         )
@@ -334,12 +335,12 @@ private fun AppContent(
             modifier = modifier,
             themeMode = state.preferences.themeMode,
             dynamicColor = state.preferences.dynamicColor,
-            hiddenAudioCount = state.hiddenAudioIds.size,
+            hiddenAudioCount = 0,
             currentLanguage = rememberAppLanguage(),
             onThemeChange = viewModel::setThemeMode,
             onDynamicColorChange = viewModel::setDynamicColor,
             onLanguageChange = ::applyLanguage,
-            onRestoreHiddenAudio = viewModel::restoreHiddenAudio
+            onRestoreHiddenAudio = { }
         )
     }
 }

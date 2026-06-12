@@ -1,4 +1,3 @@
-
 package com.nexora.player.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -69,7 +69,7 @@ fun PlaylistDetailScreen(
                 )
             }
 
-            if (items.isEmpty()) {
+            if (playlistItems.isEmpty()) {
                 item {
                     Text(
                         text = "Aún no hay canciones en esta playlist.",
@@ -77,7 +77,10 @@ fun PlaylistDetailScreen(
                     )
                 }
             } else {
-                items(items, key = { it.id }) { item ->
+                items(
+                    items = playlistItems,
+                    key = { it.id }
+                ) { item ->
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onPlayItem(item) }
@@ -85,9 +88,14 @@ fun PlaylistDetailScreen(
                         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                             Text(item.title, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                listOf(item.artist, item.album).filter { it.isNotBlank() }.joinToString(" • ")
+                                listOf(item.artist, item.album)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" • ")
                             )
-                            Text(formatDuration(item.durationMs), style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                formatDuration(item.durationMs),
+                                style = MaterialTheme.typography.bodySmall
+                            )
                             Spacer(Modifier.height(8.dp))
                             OutlinedButton(onClick = { onRemoveItem(item) }) {
                                 Text("Quitar de la playlist")
@@ -117,16 +125,24 @@ fun PlaylistDetailScreen(
                     )
                 }
             } else {
-                items(candidates, key = { it.id }) { song ->
+                items(
+                    items = candidates,
+                    key = { it.id }
+                ) { song ->
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                             Text(song.title, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                listOf(song.artist, song.album).filter { it.isNotBlank() }.joinToString(" • ")
+                                listOf(song.artist, song.album)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" • ")
                             )
-                            Text(formatDuration(song.durationMs), style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                formatDuration(song.durationMs),
+                                style = MaterialTheme.typography.bodySmall
+                            )
                             Spacer(Modifier.height(8.dp))
                             Button(onClick = { onAddSong(song) }) {
                                 Text("Agregar")

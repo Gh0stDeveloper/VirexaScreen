@@ -9,25 +9,29 @@ import android.media.AudioManager
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -38,23 +42,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.Forward10
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,13 +76,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.getSystemService
@@ -90,12 +98,25 @@ import androidx.media3.ui.PlayerView
 import com.nexora.player.R
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.playback.PlayerEngine
-import com.nexora.player.ui.components.GestureControlOverlay
 import com.nexora.player.ui.components.MediaArtwork
 import com.nexora.player.ui.components.PlaybackSeekBar
 import com.nexora.player.ui.components.formatDuration
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 import kotlin.math.roundToInt
+
+// ── Paleta Nexora Player ──────────────────────────────────────────────────────
+private val NxAccent   = Color(0xFF00C2FF)          // cyan-blue
+private val NxAccent2  = Color(0xFF7B61FF)          // purple (gradiente secundario)
+private val NxBg       = Color(0xFF080808)
+private val NxCard     = Color(0xFF141414)
+private val NxDivider  = Color.White.copy(alpha = 0.07f)
+
+private val GradientAccent = Brush.horizontalGradient(listOf(NxAccent, NxAccent2))
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SCREEN PRINCIPAL
+// ═════════════════════════════════════════════════════════════════════════════
 
 @Composable
 fun VideoPlayerScreen(
@@ -103,46 +124,53 @@ fun VideoPlayerScreen(
     current: MediaEntry?,
     onClose: () -> Unit = {}
 ) {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val activity = context.findActivity()
-    val exoPlayer = PlayerEngine.get(context)
-    val snapshot by PlayerEngine.snapshot.collectAsState()
+    val context    = LocalContext.current
+    val view       = LocalView.current
+    val activity   = context.findActivity()
+    val exoPlayer  = PlayerEngine.get(context)
+    val snapshot   by PlayerEngine.snapshot.collectAsState()
     val audioManager = context.getSystemService<AudioManager>()
-    val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1
-    val currentVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-    val volumeFraction = currentVolume.toFloat() / maxVolume.toFloat().coerceAtLeast(1f)
+    val maxVolume  = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15
 
     val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isLandscape   = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val currentItem   = snapshot.currentItem ?: current
 
-    val currentItem = snapshot.currentItem ?: current
-
+    // ── Estados reactivos ────────────────────────────────────────────────────
     var brightness by remember {
         mutableFloatStateOf(
             activity?.window?.attributes?.screenBrightness?.takeIf { it >= 0f } ?: 0.65f
         )
     }
+    // volumeFraction es state local → se actualiza en setVolume para reflejarse en UI
+    var volumeFraction by remember {
+        val cv = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+        mutableFloatStateOf(cv.toFloat() / maxVolume.toFloat().coerceAtLeast(1f))
+    }
 
-    // Portrait → controles SIEMPRE visibles (no se ocultan nunca)
-    // Landscape → se muestran/ocultan con tap, auto-ocultan a los 5 s
     var landscapeControlsVisible by remember { mutableStateOf(true) }
-    var showQueuePanel by remember { mutableStateOf(false) }
-    var seekFeedbackMs by remember { mutableLongStateOf(0L) }
+    var showQueuePanel           by remember { mutableStateOf(false) }
+    var seekFeedbackMs           by remember { mutableLongStateOf(0L) }
+    var showBrightnessHud        by remember { mutableStateOf(false) }
+    var showVolumeHud            by remember { mutableStateOf(false) }
 
-    // ── Sistema de barras / orientación ──────────────────────────────────────
+    // ── Orientación / barras del sistema ─────────────────────────────────────
     DisposableEffect(isLandscape) {
         if (isLandscape) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            val controller = activity?.window?.let { WindowCompat.getInsetsController(it, view) }
-            controller?.hide(WindowInsetsCompat.Type.systemBars())
-            controller?.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            activity?.window?.let { win ->
+                WindowCompat.getInsetsController(win, view).apply {
+                    hide(WindowInsetsCompat.Type.systemBars())
+                    systemBarsBehavior =
+                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
         }
         onDispose {
-            activity?.window
-                ?.let { WindowCompat.getInsetsController(it, view) }
-                ?.show(WindowInsetsCompat.Type.systemBars())
+            activity?.window?.let { win ->
+                WindowCompat.getInsetsController(win, view)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
@@ -153,26 +181,18 @@ fun VideoPlayerScreen(
             delay(5_000L)
             landscapeControlsVisible = false
         }
-        // En portrait no hacemos nada → controles permanecen visibles
     }
 
-    LaunchedEffect(seekFeedbackMs) {
-        if (seekFeedbackMs != 0L) {
-            delay(550)
-            seekFeedbackMs = 0L
-        }
-    }
+    LaunchedEffect(seekFeedbackMs)    { if (seekFeedbackMs != 0L)   { delay(700);   seekFeedbackMs = 0L } }
+    LaunchedEffect(showBrightnessHud) { if (showBrightnessHud)      { delay(1_600); showBrightnessHud = false } }
+    LaunchedEffect(showVolumeHud)     { if (showVolumeHud)          { delay(1_600); showVolumeHud = false } }
 
     BackHandler {
-        if (isLandscape) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        } else {
-            onClose()
-        }
+        if (isLandscape) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        else onClose()
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    // FIX: window.attributes no acepta safe-call en el lado izquierdo de =
     fun setBrightness(value: Float) {
         brightness = value.coerceIn(0.05f, 1f)
         activity?.window?.let { win ->
@@ -180,242 +200,164 @@ fun VideoPlayerScreen(
             lp.screenBrightness = brightness
             win.attributes = lp
         }
+        showBrightnessHud = true
     }
 
     fun setVolume(value: Float) {
+        volumeFraction = value.coerceIn(0f, 1f)
         audioManager?.setStreamVolume(
             AudioManager.STREAM_MUSIC,
-            (value.coerceIn(0f, 1f) * maxVolume).roundToInt(),
+            (volumeFraction * maxVolume).roundToInt(),
             0
         )
+        showVolumeHud = true
     }
 
     fun seekBy(deltaMs: Long) {
-        val duration =
-            exoPlayer.duration.takeIf { it > 0L } ?: currentItem?.durationMs ?: 0L
-        if (duration <= 0L) return
-        val target = (exoPlayer.currentPosition + deltaMs).coerceIn(0L, duration)
-        exoPlayer.seekTo(target)
+        val dur = exoPlayer.duration.takeIf { it > 0L } ?: currentItem?.durationMs ?: 0L
+        if (dur <= 0L) return
+        exoPlayer.seekTo((exoPlayer.currentPosition + deltaMs).coerceIn(0L, dur))
         seekFeedbackMs = deltaMs
     }
 
     if (currentItem == null) {
         Box(
-            modifier = modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+            modifier = modifier.fillMaxSize().background(NxBg),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 stringResource(R.string.video_no_playback),
-                style = MaterialTheme.typography.headlineSmall
+                color = Color.White.copy(0.7f),
+                fontSize = 16.sp
             )
         }
         return
     }
 
-    val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: currentItem.durationMs
-    val queue = snapshot.queue
+    val durationMs       = exoPlayer.duration.takeIf { it > 0L } ?: currentItem.durationMs
+    val queue            = snapshot.queue
     val queueFromCurrent = remember(snapshot.queue, snapshot.currentIndex) {
         if (snapshot.currentIndex in queue.indices) queue.drop(snapshot.currentIndex + 1)
         else queue.drop(1)
     }
+    val queueStartIndex = if (snapshot.currentIndex in queue.indices) snapshot.currentIndex + 1 else 1
 
-    // ── Raíz ──────────────────────────────────────────────────────────────────
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
-        // Superficie de video
-        if (isLandscape) {
-            LandscapePlayerSurface(exoPlayer = exoPlayer, modifier = Modifier.fillMaxSize())
-        } else {
-            PortraitPlayerSurface(
-                exoPlayer = exoPlayer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(240.dp)
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(28.dp))
-            )
-        }
-
-        // Capa de tap:
-        //   Portrait  → doble-tap seek, tap simple sin efecto (controles fijos)
-        //   Landscape → tap simple toggle controles, doble-tap seek
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(0f)
-                .pointerInput(isLandscape) {
-                    detectTapGestures(
-                        onTap = {
-                            if (isLandscape) landscapeControlsVisible = !landscapeControlsVisible
-                        },
-                        onDoubleTap = { offset ->
-                            if (offset.x < size.width / 2f) seekBy(-10_000L)
-                            else seekBy(10_000L)
-                            if (isLandscape) landscapeControlsVisible = true
-                        }
-                    )
-                }
-        )
-
-        // Gestos de brillo/volumen
-        GestureControlOverlay(
-            modifier = Modifier.fillMaxSize().zIndex(0f),
-            brightness = brightness,
-            volume = volumeFraction,
-            onBrightnessChange = ::setBrightness,
-            onVolumeChange = ::setVolume
-        )
-
-        // HUD de seek (±10 s)
-        AnimatedVisibility(
-            visible = seekFeedbackMs != 0L,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center).zIndex(2f)
-        ) {
-            SeekFeedbackHud(
-                deltaMs = seekFeedbackMs,
-                modifier = Modifier.padding(24.dp)
-            )
-        }
-
-        // ── Overlay de controles ──────────────────────────────────────────────
-        // Landscape → AnimatedVisibility (se oculta/muestra)
-        // Portrait  → siempre visible, sin wrapping de visibilidad
-        if (isLandscape) {
-            AnimatedVisibility(
-                visible = landscapeControlsVisible,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                VideoOverlayChrome(
-                    modifier = Modifier.fillMaxSize().zIndex(2f),
-                    currentItem = currentItem,
-                    queueCount = queue.size,
-                    queueFromCurrent = queueFromCurrent,
-                    queueStartIndex = if (snapshot.currentIndex in queue.indices)
-                        snapshot.currentIndex + 1 else 1,
-                    isLandscape = true,
-                    isPlaying = snapshot.isPlaying,
-                    positionMs = exoPlayer.currentPosition,
-                    durationMs = durationMs,
-                    onSeekTo = { exoPlayer.seekTo(it) },
-                    onPrevious = { PlayerEngine.skipPrevious(context); landscapeControlsVisible = true },
-                    onTogglePlay = { PlayerEngine.togglePlayPause(context); landscapeControlsVisible = true },
-                    onNext = { PlayerEngine.skipNext(context); landscapeControlsVisible = true },
-                    onEnterFullscreen = {
-                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                    },
-                    onExitFullscreen = {
-                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    },
-                    onToggleQueue = { showQueuePanel = !showQueuePanel; landscapeControlsVisible = true },
-                    onBack = {
-                        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                    },
-                    onJumpToQueueIndex = { index ->
-                        PlayerEngine.jumpTo(context, index)
-                        landscapeControlsVisible = true
-                    }
-                )
+    if (isLandscape) {
+        LandscapeScreen(
+            modifier              = modifier,
+            exoPlayer             = exoPlayer,
+            currentItem           = currentItem,
+            queue                 = queue,
+            queueFromCurrent      = queueFromCurrent,
+            queueStartIndex       = queueStartIndex,
+            isPlaying             = snapshot.isPlaying,
+            positionMs            = exoPlayer.currentPosition,
+            durationMs            = durationMs,
+            brightness            = brightness,
+            volumeFraction        = volumeFraction,
+            controlsVisible       = landscapeControlsVisible,
+            showQueuePanel        = showQueuePanel,
+            seekFeedbackMs        = seekFeedbackMs,
+            showBrightnessHud     = showBrightnessHud,
+            showVolumeHud         = showVolumeHud,
+            onToggleControls      = { landscapeControlsVisible = !landscapeControlsVisible },
+            onDoubleTapLeft       = { seekBy(-10_000L); landscapeControlsVisible = true },
+            onDoubleTapRight      = { seekBy(10_000L);  landscapeControlsVisible = true },
+            onBrightnessSwipe     = { delta -> setBrightness(brightness + delta) },
+            onVolumeSwipe         = { delta -> setVolume(volumeFraction + delta) },
+            onSeekTo              = { exoPlayer.seekTo(it) },
+            onPrevious            = { PlayerEngine.skipPrevious(context); landscapeControlsVisible = true },
+            onTogglePlay          = { PlayerEngine.togglePlayPause(context); landscapeControlsVisible = true },
+            onNext                = { PlayerEngine.skipNext(context); landscapeControlsVisible = true },
+            onExitFullscreen      = {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            },
+            onToggleQueue         = { showQueuePanel = !showQueuePanel; landscapeControlsVisible = true },
+            onBack                = {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            },
+            onJumpToQueueIndex    = { idx ->
+                PlayerEngine.jumpTo(context, idx)
+                showQueuePanel = false
+                landscapeControlsVisible = true
             }
-        } else {
-            // Portrait: sin AnimatedVisibility → siempre visible
-            VideoOverlayChrome(
-                modifier = Modifier.fillMaxSize().zIndex(2f),
-                currentItem = currentItem,
-                queueCount = queue.size,
-                queueFromCurrent = queueFromCurrent,
-                queueStartIndex = if (snapshot.currentIndex in queue.indices)
-                    snapshot.currentIndex + 1 else 1,
-                isLandscape = false,
-                isPlaying = snapshot.isPlaying,
-                positionMs = exoPlayer.currentPosition,
-                durationMs = durationMs,
-                onSeekTo = { exoPlayer.seekTo(it) },
-                onPrevious = { PlayerEngine.skipPrevious(context) },
-                onTogglePlay = { PlayerEngine.togglePlayPause(context) },
-                onNext = { PlayerEngine.skipNext(context) },
-                onEnterFullscreen = {
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                },
-                onExitFullscreen = {
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                },
-                onToggleQueue = { showQueuePanel = !showQueuePanel },
-                onBack = onClose,
-                onJumpToQueueIndex = { index -> PlayerEngine.jumpTo(context, index) }
-            )
-        }
-
-        // Panel de cola
-        AnimatedVisibility(
-            visible = showQueuePanel && queueFromCurrent.isNotEmpty(),
-            enter = expandVertically(),
-            exit = shrinkVertically(),
-            modifier = Modifier.align(Alignment.BottomCenter).zIndex(2f)
-        ) {
-            QueueDrawer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                items = queueFromCurrent,
-                startIndex = snapshot.currentIndex + 1,
-                onItemClick = { absoluteIndex ->
-                    PlayerEngine.jumpTo(context, absoluteIndex)
-                    showQueuePanel = false
-                    if (isLandscape) landscapeControlsVisible = true
-                }
-            )
-        }
+        )
+    } else {
+        PortraitScreen(
+            modifier           = modifier,
+            exoPlayer          = exoPlayer,
+            currentItem        = currentItem,
+            queueFromCurrent   = queueFromCurrent,
+            queueStartIndex    = queueStartIndex,
+            isPlaying          = snapshot.isPlaying,
+            positionMs         = exoPlayer.currentPosition,
+            durationMs         = durationMs,
+            brightness         = brightness,
+            volumeFraction     = volumeFraction,
+            seekFeedbackMs     = seekFeedbackMs,
+            onSeekTo           = { exoPlayer.seekTo(it) },
+            onPrevious         = { PlayerEngine.skipPrevious(context) },
+            onTogglePlay       = { PlayerEngine.togglePlayPause(context) },
+            onNext             = { PlayerEngine.skipNext(context) },
+            onEnterFullscreen  = {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            },
+            onClose            = onClose,
+            onBrightnessChange = ::setBrightness,
+            onVolumeChange     = ::setVolume,
+            onJumpToQueueIndex = { idx -> PlayerEngine.jumpTo(context, idx) },
+            onDoubleTap        = { right -> if (right) seekBy(10_000L) else seekBy(-10_000L) }
+        )
     }
 }
 
-@Composable
-private fun LandscapePlayerSurface(
-    exoPlayer: androidx.media3.common.Player,
-    modifier: Modifier = Modifier
-) {
-    AndroidView(
-        factory = {
-            PlayerView(it).apply {
-                player = exoPlayer
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-        },
-        modifier = modifier
-    )
-}
+// ═════════════════════════════════════════════════════════════════════════════
+// PORTRAIT
+// ═════════════════════════════════════════════════════════════════════════════
 
 @Composable
-private fun PortraitPlayerSurface(
-    exoPlayer: androidx.media3.common.Player,
-    modifier: Modifier = Modifier
+private fun PortraitScreen(
+    modifier           : Modifier = Modifier,
+    exoPlayer          : androidx.media3.common.Player,
+    currentItem        : MediaEntry,
+    queueFromCurrent   : List<MediaEntry>,
+    queueStartIndex    : Int,
+    isPlaying          : Boolean,
+    positionMs         : Long,
+    durationMs         : Long,
+    brightness         : Float,
+    volumeFraction     : Float,
+    seekFeedbackMs     : Long,
+    onSeekTo           : (Long) -> Unit,
+    onPrevious         : () -> Unit,
+    onTogglePlay       : () -> Unit,
+    onNext             : () -> Unit,
+    onEnterFullscreen  : () -> Unit,
+    onClose            : () -> Unit,
+    onBrightnessChange : (Float) -> Unit,
+    onVolumeChange     : (Float) -> Unit,
+    onJumpToQueueIndex : (Int) -> Unit,
+    onDoubleTap        : (right: Boolean) -> Unit
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        tonalElevation = 4.dp,
-        shadowElevation = 12.dp,
-        color = MaterialTheme.colorScheme.surface
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(NxBg)
     ) {
-        Box {
+
+        // ── Video 16:9 con barra encima ────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+        ) {
+            // Player surface
             AndroidView(
-                factory = {
-                    PlayerView(it).apply {
-                        player = exoPlayer
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player      = exoPlayer
                         useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        resizeMode  = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -425,377 +367,805 @@ private fun PortraitPlayerSurface(
                 modifier = Modifier.fillMaxSize()
             )
 
+            // Gradiente superior
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Black.copy(0.65f), Color.Transparent))
+                    )
+            )
+            // Gradiente inferior
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.55f)))
+                    )
+            )
+
+            // Top bar (Back + Fullscreen)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NxIconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Volver", onClick = onClose)
+                Spacer(Modifier.weight(1f))
+                NxIconBtn(Icons.Filled.Fullscreen, "Pantalla completa", onClick = onEnterFullscreen)
+            }
+
+            // Capa de doble-tap para seek
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.15f), Color.Transparent)
-                        )
-                    )
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            var lastTapTime = 0L
+                            var lastTapX    = 0f
+                            while (true) {
+                                val down    = awaitFirstDown(requireUnconsumed = false)
+                                val startX  = down.position.x
+                                val downMs  = System.currentTimeMillis()
+                                // espera release
+                                while (true) {
+                                    val ev = awaitPointerEvent()
+                                    if (ev.changes.none { it.pressed }) break
+                                }
+                                val elapsed = System.currentTimeMillis() - downMs
+                                if (elapsed < 250L) {
+                                    val sinceLast = downMs - lastTapTime
+                                    if (sinceLast < 350L) {
+                                        onDoubleTap(lastTapX > size.width / 2f)
+                                        lastTapTime = 0L
+                                    } else {
+                                        lastTapTime = downMs
+                                        lastTapX    = startX
+                                    }
+                                }
+                            }
+                        }
+                    }
             )
+
+            // Seek feedback HUD
+            AnimatedVisibility(
+                visible  = seekFeedbackMs != 0L,
+                enter    = fadeIn(),
+                exit     = fadeOut(),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                SeekFeedbackHud(seekFeedbackMs)
+            }
         }
-    }
-}
 
-@Composable
-private fun VideoOverlayChrome(
-    modifier: Modifier = Modifier,
-    currentItem: MediaEntry,
-    queueCount: Int,
-    queueFromCurrent: List<MediaEntry>,
-    queueStartIndex: Int,
-    isLandscape: Boolean,
-    isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
-    onSeekTo: (Long) -> Unit,
-    onPrevious: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onNext: () -> Unit,
-    onEnterFullscreen: () -> Unit,
-    onExitFullscreen: () -> Unit,
-    onToggleQueue: () -> Unit,
-    onBack: () -> Unit,
-    onJumpToQueueIndex: (Int) -> Unit
-) {
-    Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = if (isLandscape) 0.22f else 0.08f))
-        )
-
+        // ── Panel de controles (scrollable) ────────────────────────────────────
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(if (isLandscape) 14.dp else 16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            TopChrome(
-                currentItem = currentItem,
-                queueCount = queueCount,
-                isLandscape = isLandscape,
-                onBack = onBack,
-                onToggleQueue = onToggleQueue,
-                onFullscreenToggle = if (isLandscape) onExitFullscreen else onEnterFullscreen
-            )
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .animateContentSize(),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Spacer(modifier = Modifier.height(if (isLandscape) 4.dp else 12.dp))
-
-                Card(
-                    shape = RoundedCornerShape(32.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.28f)),
-                    modifier = Modifier.fillMaxWidth(if (isLandscape) 0.72f else 0.96f)
+            // Título + meta
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    text     = currentItem.title,
+                    color    = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    PillTag(currentItem.resolutionLabel)
+                    Text(
+                        text  = currentItem.folder?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.video_local_label),
+                        color = Color.White.copy(0.45f),
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Barra de progreso + tiempos
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlaybackSeekBar(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeekTo   = onSeekTo,
+                    modifier   = Modifier.fillMaxWidth()
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        formatDuration(positionMs),
+                        color    = NxAccent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        formatDuration(durationMs),
+                        color = Color.White.copy(0.4f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            // Controles de reproducción
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NxControlBtn(Icons.Filled.Replay10, "−10 s", iconSize = 24.dp) {
+                    onSeekTo((positionMs - 10_000L).coerceAtLeast(0L))
+                }
+                NxControlBtn(Icons.Filled.SkipPrevious, "Anterior", iconSize = 26.dp, onClick = onPrevious)
+
+                // Botón play/pause con gradiente
+                Box(
+                    modifier = Modifier
+                        .size(68.dp)
+                        .clip(CircleShape)
+                        .background(GradientAccent)
+                        .clickable(onClick = onTogglePlay),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                        tint = Color.White,
+                        modifier = Modifier.size(34.dp)
+                    )
+                }
+
+                NxControlBtn(Icons.Filled.SkipNext, "Siguiente", iconSize = 26.dp, onClick = onNext)
+                NxControlBtn(Icons.Filled.Forward10, "+10 s", iconSize = 24.dp) {
+                    onSeekTo((positionMs + 10_000L).coerceAtMost(durationMs))
+                }
+            }
+
+            // Separador sutil
+            HorizontalDivider(color = NxDivider)
+
+            // Sliders de brillo y volumen
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                NxSlider(
+                    icon    = Icons.Filled.Brightness6,
+                    label   = "Brillo",
+                    value   = brightness,
+                    range   = 0.05f..1f,
+                    onChange = onBrightnessChange
+                )
+                NxSlider(
+                    icon    = if (volumeFraction < 0.01f) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                    label   = "Volumen",
+                    value   = volumeFraction,
+                    range   = 0f..1f,
+                    onChange = onVolumeChange
+                )
+            }
+
+            // Cola de reproducción
+            if (queueFromCurrent.isNotEmpty()) {
+                HorizontalDivider(color = NxDivider)
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ActionCluster(
-                            isPlaying = isPlaying,
-                            onPrevious = onPrevious,
-                            onTogglePlay = onTogglePlay,
-                            onNext = onNext,
-                            onRewind = { onSeekTo((positionMs - 10_000L).coerceAtLeast(0L)) },
-                            onForward = { onSeekTo((positionMs + 10_000L).coerceAtMost(durationMs.coerceAtLeast(positionMs + 10_000L))) }
+                        Icon(
+                            Icons.AutoMirrored.Filled.PlaylistPlay,
+                            contentDescription = null,
+                            tint = NxAccent,
+                            modifier = Modifier.size(20.dp)
                         )
-
-                        PlaybackSeekBar(
-                            positionMs = positionMs,
-                            durationMs = durationMs,
-                            onSeekTo = onSeekTo,
-                            modifier = Modifier.fillMaxWidth()
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Continuará",
+                            color      = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize   = 14.sp
                         )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Desliza: brillo izquierda / volumen derecha",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.72f)
-                            )
-                            Text(
-                                text = if (isLandscape) "Pantalla completa" else "Modo normal",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White.copy(alpha = 0.92f)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${queueFromCurrent.size} videos",
+                            color    = Color.White.copy(0.4f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(queueFromCurrent.take(8)) { index, item ->
+                            QueueItemCard(
+                                item    = item,
+                                index   = queueStartIndex + index,
+                                onClick = { onJumpToQueueIndex(queueStartIndex + index) }
                             )
                         }
                     }
                 }
-
-                if (queueFromCurrent.isNotEmpty()) {
-                    QueuePreviewRow(
-                        items = queueFromCurrent.take(4),
-                        startIndex = queueStartIndex,
-                        onItemClick = onJumpToQueueIndex,
-                        modifier = Modifier.fillMaxWidth(if (isLandscape) 0.82f else 1f)
-                    )
-                }
             }
 
-            BottomChrome(
-                currentItem = currentItem,
-                isLandscape = isLandscape,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeekTo = onSeekTo,
-                onToggleQueue = onToggleQueue,
-                onFullscreenToggle = if (isLandscape) onExitFullscreen else onEnterFullscreen
+            Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// LANDSCAPE
+// ═════════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun LandscapeScreen(
+    modifier           : Modifier = Modifier,
+    exoPlayer          : androidx.media3.common.Player,
+    currentItem        : MediaEntry,
+    queue              : List<MediaEntry>,
+    queueFromCurrent   : List<MediaEntry>,
+    queueStartIndex    : Int,
+    isPlaying          : Boolean,
+    positionMs         : Long,
+    durationMs         : Long,
+    brightness         : Float,
+    volumeFraction     : Float,
+    controlsVisible    : Boolean,
+    showQueuePanel     : Boolean,
+    seekFeedbackMs     : Long,
+    showBrightnessHud  : Boolean,
+    showVolumeHud      : Boolean,
+    onToggleControls   : () -> Unit,
+    onDoubleTapLeft    : () -> Unit,
+    onDoubleTapRight   : () -> Unit,
+    onBrightnessSwipe  : (Float) -> Unit,
+    onVolumeSwipe      : (Float) -> Unit,
+    onSeekTo           : (Long) -> Unit,
+    onPrevious         : () -> Unit,
+    onTogglePlay       : () -> Unit,
+    onNext             : () -> Unit,
+    onExitFullscreen   : () -> Unit,
+    onToggleQueue      : () -> Unit,
+    onBack             : () -> Unit,
+    onJumpToQueueIndex : (Int) -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // Video surface
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player        = exoPlayer
+                    useController = false
+                    resizeMode    = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    layoutParams  = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // ── Capa unificada de gestos ──────────────────────────────────────────
+        // Detecta: swipe vertical (brillo/volumen) + tap simple + doble tap (seek)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    // Variables persistentes entre gestos dentro del mismo pointerInput
+                    var lastTapTime = 0L
+                    var lastTapX    = 0f
+
+                    awaitEachGesture {
+                        val down    = awaitFirstDown(requireUnconsumed = false)
+                        val startX  = down.position.x
+                        val downMs  = System.currentTimeMillis()
+                        var totalDy = 0f
+                        var didDrag = false
+
+                        while (true) {
+                            val event  = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+
+                            val dy = change.position.y - change.previousPosition.y
+                            totalDy += dy
+
+                            if (abs(totalDy) > 18f) {
+                                didDrag = true
+                                change.consume()
+                                // dy negativo = mover hacia arriba = aumentar
+                                val delta = -dy / size.height.toFloat() * 2.2f
+                                if (startX < size.width / 2f) onBrightnessSwipe(delta)
+                                else onVolumeSwipe(delta)
+                            }
+                        }
+
+                        if (!didDrag) {
+                            val elapsed   = System.currentTimeMillis() - downMs
+                            if (elapsed < 280L) {
+                                val sinceLast = downMs - lastTapTime
+                                if (sinceLast < 360L) {
+                                    // Doble tap → seek
+                                    if (lastTapX < size.width / 2f) onDoubleTapLeft()
+                                    else onDoubleTapRight()
+                                    lastTapTime = 0L
+                                } else {
+                                    // Tap simple → toggle controles
+                                    lastTapTime = downMs
+                                    lastTapX    = startX
+                                    onToggleControls()
+                                }
+                            }
+                        }
+                    }
+                }
+        )
+
+        // ── HUD de brillo (izquierda) ─────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = showBrightnessHud,
+            enter    = fadeIn(tween(150)),
+            exit     = fadeOut(tween(400)),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 32.dp)
+                .zIndex(3f)
+        ) {
+            GestureHud(
+                icon  = Icons.Filled.Brightness6,
+                value = brightness,
+                label = "${(brightness * 100).roundToInt()}%"
+            )
+        }
+
+        // ── HUD de volumen (derecha) ──────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = showVolumeHud,
+            enter    = fadeIn(tween(150)),
+            exit     = fadeOut(tween(400)),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 32.dp)
+                .zIndex(3f)
+        ) {
+            GestureHud(
+                icon  = if (volumeFraction < 0.01f) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+                value = volumeFraction,
+                label = "${(volumeFraction * 100).roundToInt()}%"
+            )
+        }
+
+        // ── HUD de seek ───────────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = seekFeedbackMs != 0L,
+            enter    = fadeIn(),
+            exit     = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .zIndex(3f)
+        ) {
+            SeekFeedbackHud(seekFeedbackMs)
+        }
+
+        // ── Overlay de controles (se oculta con tap) ──────────────────────────
+        AnimatedVisibility(
+            visible = controlsVisible,
+            enter   = fadeIn(tween(220)),
+            exit    = fadeOut(tween(220))
+        ) {
+            LandscapeControls(
+                modifier           = Modifier.fillMaxSize().zIndex(2f),
+                currentItem        = currentItem,
+                queueCount         = queue.size,
+                queueFromCurrent   = queueFromCurrent,
+                queueStartIndex    = queueStartIndex,
+                isPlaying          = isPlaying,
+                positionMs         = positionMs,
+                durationMs         = durationMs,
+                onSeekTo           = onSeekTo,
+                onPrevious         = onPrevious,
+                onTogglePlay       = onTogglePlay,
+                onNext             = onNext,
+                onExitFullscreen   = onExitFullscreen,
+                onToggleQueue      = onToggleQueue,
+                onBack             = onBack,
+                onJumpToQueueIndex = onJumpToQueueIndex
+            )
+        }
+
+        // ── Panel de cola ─────────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible  = showQueuePanel && queueFromCurrent.isNotEmpty(),
+            enter    = expandVertically(),
+            exit     = shrinkVertically(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(4f)
+        ) {
+            QueueDrawer(
+                modifier    = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 10.dp),
+                items       = queueFromCurrent,
+                startIndex  = queueStartIndex,
+                onItemClick = onJumpToQueueIndex
             )
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Controles internos de landscape
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun TopChrome(
-    currentItem: MediaEntry,
-    queueCount: Int,
-    isLandscape: Boolean,
-    onBack: () -> Unit,
-    onToggleQueue: () -> Unit,
-    onFullscreenToggle: () -> Unit
+private fun LandscapeControls(
+    modifier           : Modifier = Modifier,
+    currentItem        : MediaEntry,
+    queueCount         : Int,
+    queueFromCurrent   : List<MediaEntry>,
+    queueStartIndex    : Int,
+    isPlaying          : Boolean,
+    positionMs         : Long,
+    durationMs         : Long,
+    onSeekTo           : (Long) -> Unit,
+    onPrevious         : () -> Unit,
+    onTogglePlay       : () -> Unit,
+    onNext             : () -> Unit,
+    onExitFullscreen   : () -> Unit,
+    onToggleQueue      : () -> Unit,
+    onBack             : () -> Unit,
+    onJumpToQueueIndex : (Int) -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = Color.Black.copy(alpha = 0.34f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-    ) {
+    Box(modifier = modifier) {
+
+        // Gradiente superior
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(110.dp)
+                .align(Alignment.TopCenter)
+                .background(
+                    Brush.verticalGradient(listOf(Color.Black.copy(0.82f), Color.Transparent))
+                )
+        )
+        // Gradiente inferior
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(170.dp)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f)))
+                )
+        )
+
+        // ── Top bar ───────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = if (isLandscape) 8.dp else 10.dp),
+                .align(Alignment.TopCenter)
+                .padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FilledTonalIconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp)
-            ) {
+            NxIconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Volver", onClick = onBack)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = currentItem.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    maxLines = 1
+                    currentItem.title,
+                    color      = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 15.sp,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = currentItem.folder?.takeIf { it.isNotBlank() } ?: stringResource(R.string.video_local_label),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.72f),
+                    text  = buildString {
+                        val folder = currentItem.folder?.takeIf { it.isNotBlank() }
+                        if (folder != null) append("$folder  •  ")
+                        append(currentItem.resolutionLabel)
+                    },
+                    color    = Color.White.copy(0.5f),
+                    fontSize = 12.sp,
                     maxLines = 1
                 )
             }
-
             if (queueCount > 1) {
-                FilledTonalIconButton(onClick = onToggleQueue) {
-                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Lista de reproducción")
-                }
+                NxIconBtn(Icons.AutoMirrored.Filled.PlaylistPlay, "Playlist", onClick = onToggleQueue)
             }
-
-            IconButton(onClick = onFullscreenToggle) {
-                Icon(
-                    imageVector = if (isLandscape) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                    contentDescription = if (isLandscape) "Minimizar" else "Pantalla completa",
-                    tint = Color.White
-                )
-            }
+            NxIconBtn(Icons.Filled.FullscreenExit, "Salir", onClick = onExitFullscreen)
         }
-    }
-}
 
-@Composable
-private fun BottomChrome(
-    currentItem: MediaEntry,
-    isLandscape: Boolean,
-    positionMs: Long,
-    durationMs: Long,
-    onSeekTo: (Long) -> Unit,
-    onToggleQueue: () -> Unit,
-    onFullscreenToggle: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = Color.Black.copy(alpha = 0.34f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-        modifier = Modifier.fillMaxWidth(if (isLandscape) 0.76f else 1f)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        // ── Botón play/pause central ──────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(70.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(0.45f))
+                .clickable(onClick = onTogglePlay),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = currentItem.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        maxLines = 1
-                    )
-                    Text(
-                        text = "${currentItem.resolutionLabel} • ${formatDuration(currentItem.durationMs)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.74f),
-                        maxLines = 1
-                    )
-                }
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint     = Color.White,
+                modifier = Modifier.size(38.dp)
+            )
+        }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalIconButton(onClick = onToggleQueue) {
-                        Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Abrir cola")
-                    }
-                    FilledTonalIconButton(onClick = onFullscreenToggle) {
-                        Icon(
-                            imageVector = if (isLandscape) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                            contentDescription = if (isLandscape) "Minimizar" else "Pantalla completa"
+        // ── Controles inferiores ──────────────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Cola preview
+            if (queueFromCurrent.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    itemsIndexed(queueFromCurrent.take(5)) { index, item ->
+                        QueueItemCard(
+                            item    = item,
+                            index   = queueStartIndex + index,
+                            onClick = { onJumpToQueueIndex(queueStartIndex + index) },
+                            compact = true
                         )
                     }
                 }
             }
 
-            PlaybackSeekBar(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeekTo = onSeekTo,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Botones skip + seek
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                LscBtn(Icons.Filled.SkipPrevious, "Prev",  onClick = onPrevious)
+                Spacer(Modifier.width(14.dp))
+                LscBtn(Icons.Filled.Replay10,     "−10 s", onClick = {
+                    onSeekTo((positionMs - 10_000L).coerceAtLeast(0L))
+                })
+                Spacer(Modifier.width(14.dp))
+                LscBtn(Icons.Filled.Forward10,    "+10 s", onClick = {
+                    onSeekTo((positionMs + 10_000L).coerceAtMost(durationMs))
+                })
+                Spacer(Modifier.width(14.dp))
+                LscBtn(Icons.Filled.SkipNext,     "Next",  onClick = onNext)
+            }
+
+            // Seekbar + tiempos
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    formatDuration(positionMs),
+                    color      = NxAccent,
+                    fontSize   = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                PlaybackSeekBar(
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    onSeekTo   = onSeekTo,
+                    modifier   = Modifier.weight(1f)
+                )
+                Text(
+                    formatDuration(durationMs),
+                    color    = Color.White.copy(0.45f),
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
 
-@Composable
-private fun ActionCluster(
-    isPlaying: Boolean,
-    onPrevious: () -> Unit,
-    onTogglePlay: () -> Unit,
-    onNext: () -> Unit,
-    onRewind: () -> Unit,
-    onForward: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        CompactActionButton(
-            icon = Icons.Filled.Replay10,
-            label = "10s",
-            onClick = onRewind
-        )
-        CompactActionButton(
-            icon = Icons.Filled.SkipPrevious,
-            label = "Prev",
-            onClick = onPrevious
-        )
-        FilledTonalIconButton(
-            onClick = onTogglePlay,
-            modifier = Modifier.size(64.dp)
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = if (isPlaying) "Pausar" else "Reproducir",
-                modifier = Modifier.size(30.dp)
-            )
-        }
-        CompactActionButton(
-            icon = Icons.Filled.SkipNext,
-            label = "Next",
-            onClick = onNext
-        )
-        CompactActionButton(
-            icon = Icons.Filled.Forward10,
-            label = "10s",
-            onClick = onForward
-        )
-    }
-}
+// ═════════════════════════════════════════════════════════════════════════════
+// COMPONENTES COMPARTIDOS
+// ═════════════════════════════════════════════════════════════════════════════
 
+/** Botón icono con fondo circular semitransparente */
 @Composable
-private fun CompactActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
+private fun NxIconBtn(
+    icon  : ImageVector,
+    label : String,
+    size  : Dp = 40.dp,
     onClick: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.08f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        FilledTonalIconButton(onClick = onClick) {
-            Icon(imageVector = icon, contentDescription = label)
-        }
+        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** Control de reproducción en portrait (icono grande + tint blanco) */
+@Composable
+private fun NxControlBtn(
+    icon     : ImageVector,
+    label    : String,
+    iconSize : Dp = 24.dp,
+    onClick  : () -> Unit
+) {
+    IconButton(
+        onClick  = onClick,
+        modifier = Modifier.size(52.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(iconSize))
+    }
+}
+
+/** Botón circular en landscape */
+@Composable
+private fun LscBtn(
+    icon   : ImageVector,
+    label  : String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.11f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** Slider de brillo / volumen para portrait */
+@Composable
+private fun NxSlider(
+    icon    : ImageVector,
+    label   : String,
+    value   : Float,
+    range   : ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit
+) {
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint     = NxAccent,
+            modifier = Modifier.size(19.dp)
+        )
+        Slider(
+            value       = value,
+            onValueChange = onChange,
+            valueRange  = range,
+            modifier    = Modifier.weight(1f),
+            colors      = SliderDefaults.colors(
+                thumbColor         = NxAccent,
+                activeTrackColor   = NxAccent,
+                inactiveTrackColor = Color.White.copy(alpha = 0.14f)
+            )
+        )
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.8f)
+            "${(value / (range.endInclusive - range.start) * 100).coerceIn(0f, 100f).roundToInt()}%",
+            color    = Color.White.copy(0.5f),
+            fontSize = 12.sp,
+            modifier = Modifier.width(34.dp)
         )
     }
 }
 
+/** HUD flotante de brillo / volumen en landscape (deslizando) */
+@Composable
+private fun GestureHud(
+    icon  : ImageVector,
+    value : Float,
+    label : String
+) {
+    Surface(
+        shape  = RoundedCornerShape(18.dp),
+        color  = Color.Black.copy(alpha = 0.70f),
+        border = BorderStroke(1.dp, NxAccent.copy(alpha = 0.25f))
+    ) {
+        Column(
+            modifier              = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            horizontalAlignment   = Alignment.CenterHorizontally,
+            verticalArrangement   = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(icon, null, tint = NxAccent, modifier = Modifier.size(24.dp))
+            // Barra vertical de nivel
+            Box(
+                modifier = Modifier
+                    .width(5.dp)
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(0.15f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(value.coerceIn(0f, 1f))
+                        .align(Alignment.BottomCenter)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(GradientAccent)
+                )
+            }
+            Text(label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+/** Tag tipo "pill" para mostrar resolución u otros metadatos */
+@Composable
+private fun PillTag(text: String) {
+    Text(
+        text     = text,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(NxAccent.copy(alpha = 0.15f))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+        color    = NxAccent,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium
+    )
+}
+
+/** Drawer de cola completa (modal) */
 @Composable
 private fun QueueDrawer(
-    modifier: Modifier = Modifier,
-    items: List<MediaEntry>,
-    startIndex: Int,
+    modifier   : Modifier = Modifier,
+    items      : List<MediaEntry>,
+    startIndex : Int,
     onItemClick: (Int) -> Unit
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        color = Color.Black.copy(alpha = 0.70f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+        shape    = RoundedCornerShape(24.dp),
+        color    = NxCard,
+        border   = BorderStroke(1.dp, NxDivider)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier            = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
-                    contentDescription = null,
-                    tint = Color.White
-                )
-                Spacer(modifier = Modifier.size(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Siguiente reproducción",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White
-                    )
-                    Text(
-                        text = "Toca un video para saltar a él",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.65f)
-                    )
+                Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = NxAccent, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Siguiente reproducción", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text("Toca para saltar", color = Color.White.copy(0.45f), fontSize = 12.sp)
                 }
             }
-
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
-
+            HorizontalDivider(color = NxDivider)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(items) { index, item ->
                     QueueItemCard(
-                        item = item,
-                        index = startIndex + index,
+                        item    = item,
+                        index   = startIndex + index,
                         onClick = { onItemClick(startIndex + index) }
                     )
                 }
@@ -804,148 +1174,110 @@ private fun QueueDrawer(
     }
 }
 
-@Composable
-private fun QueuePreviewRow(
-    items: List<MediaEntry>,
-    startIndex: Int,
-    onItemClick: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "Continuará",
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "${items.size} videos",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.65f)
-            )
-        }
-
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            itemsIndexed(items) { index, item ->
-                QueueItemCard(
-                    item = item,
-                    index = startIndex + index,
-                    onClick = { onItemClick(startIndex + index) }
-                )
-            }
-        }
-    }
-}
-
+/** Tarjeta de video en la cola */
 @Composable
 private fun QueueItemCard(
-    item: MediaEntry,
-    index: Int,
-    onClick: () -> Unit
+    item    : MediaEntry,
+    index   : Int,
+    onClick : () -> Unit,
+    compact : Boolean = false
 ) {
+    val cardW  = if (compact) 138.dp else 158.dp
+    val cardH  = if (compact) 100.dp else 116.dp
+    val thumbH = if (compact) 58.dp  else 70.dp
+
     Card(
         onClick = onClick,
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.06f)),
-        modifier = Modifier.size(width = 170.dp, height = 124.dp)
+        shape   = RoundedCornerShape(14.dp),
+        colors  = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.055f)),
+        border  = BorderStroke(1.dp, NxDivider),
+        modifier = Modifier.size(width = cardW, height = cardH)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.height(76.dp)) {
-                MediaArtwork(
-                    item = item,
-                    modifier = Modifier.fillMaxSize()
-                )
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.height(thumbH)) {
+                MediaArtwork(item = item, modifier = Modifier.fillMaxSize())
                 Box(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))
-                            )
+                            Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.5f)))
                         )
                 )
                 Text(
-                    text = "#${index + 1}",
+                    "#${index + 1}",
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
+                        .padding(5.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White
+                        .background(NxAccent.copy(0.85f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    color      = Color.Black,
+                    fontSize   = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
-
             Column(
-                modifier = Modifier
-                    .padding(10.dp)
-                    .verticalScroll(rememberScrollState()),
+                modifier            = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                    maxLines = 1
+                    item.title,
+                    color    = Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = formatDuration(item.durationMs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.68f),
-                    maxLines = 1
+                    formatDuration(item.durationMs),
+                    color    = Color.White.copy(0.45f),
+                    fontSize = 11.sp
                 )
             }
         }
     }
 }
 
+/** HUD central de seek (+10s / -10s) */
 @Composable
-private fun SeekFeedbackHud(
-    deltaMs: Long,
-    modifier: Modifier = Modifier
-) {
+private fun SeekFeedbackHud(deltaMs: Long, modifier: Modifier = Modifier) {
     val forward = deltaMs >= 0L
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = Color.Black.copy(alpha = 0.70f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+        shape    = RoundedCornerShape(18.dp),
+        color    = Color.Black.copy(alpha = 0.72f),
+        border   = BorderStroke(1.dp, NxAccent.copy(0.35f))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier              = Modifier.padding(horizontal = 22.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment     = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (forward) Icons.Filled.Forward10 else Icons.Filled.Replay10,
+                if (forward) Icons.Filled.Forward10 else Icons.Filled.Replay10,
                 contentDescription = null,
-                tint = Color.White,
+                tint     = NxAccent,
                 modifier = Modifier.size(28.dp)
             )
             Column {
                 Text(
-                    text = if (forward) "Avanzar" else "Retroceder",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall
+                    if (forward) "+10 segundos" else "−10 segundos",
+                    color      = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize   = 14.sp
                 )
                 Text(
-                    text = if (forward) "+10 s" else "-10 s",
-                    color = Color.White.copy(alpha = 0.72f),
-                    style = MaterialTheme.typography.labelLarge
+                    if (forward) "Avanzando" else "Retrocediendo",
+                    color    = Color.White.copy(0.6f),
+                    fontSize = 12.sp
                 )
             }
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 private fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
+    is Activity      -> this
     is ContextWrapper -> baseContext.findActivity()
-    else -> null
+    else             -> null
 }

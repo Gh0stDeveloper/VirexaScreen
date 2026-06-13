@@ -91,7 +91,7 @@
     <string name="settings_developer">Developer</string>
     <string name="settings_developer_identity">Ghost Developer · CHICO-CP</string>
     <string name="settings_github">GitHub</string>
-    <string name="settings_profile">Profile</string>
+    <string name="settings_profile">Telegram</string>
     <string name="settings_about_show">Show detailed description</string>
     <string name="settings_about_hide">Hide description</string>
     <string name="settings_about_title">What the app does</string>

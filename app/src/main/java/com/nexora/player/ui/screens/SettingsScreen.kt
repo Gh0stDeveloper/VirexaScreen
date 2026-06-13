@@ -166,7 +166,7 @@ fun SettingsScreen(
                         leadingIcon = { androidx.compose.material3.Icon(Icons.Filled.Code, contentDescription = null) }
                     )
                     AssistChip(
-                        onClick = { uriHandler.openUri("https://github.com/CHICO-CP") },
+                        onClick = { uriHandler.openUri("https://t.me/Gh0stDeveloper") },
                         label = { Text(stringResource(R.string.settings_profile)) },
                         leadingIcon = { androidx.compose.material3.Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) }
                     )

@@ -1,7 +1,5 @@
 package com.nexora.player.ui.screens
 
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Shuffle
@@ -29,9 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.nexora.player.R
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.playback.PlayerEngine
@@ -63,26 +60,11 @@ fun AudioPlayerScreen(
 
     // Colores extraídos de la portada
     var dominantColor by remember { mutableStateOf(Color.DarkGray) }
-    var onDominantColor by remember { mutableStateOf(Color.White) }
-
-    // Extraer paleta de color de la carátula cuando cambia
-    LaunchedEffect(current?.artUri) {
-        val bitmap = try {
-            val drawable = coil.imageLoader.execute(
-                ImageRequest.Builder(context)
-                    .data(current?.artUri)
-                    .size(300) // pequeño para la paleta
-                    .build()
-            ).drawable
-            (drawable as? BitmapDrawable)?.bitmap
-        } catch (e: Exception) { null }
-        if (bitmap != null) {
-            val palette = Palette.from(bitmap).generate()
-            val swatch = palette.dominantSwatch
-            if (swatch != null) {
-                dominantColor = Color(swatch.rgb)
-                onDominantColor = Color(swatch.bodyTextColor)
-            }
+    // Color base para la interfaz
+    LaunchedEffect(current?.uri) {
+        dominantColor = when (current?.kind) {
+            com.nexora.player.data.model.MediaKind.VIDEO -> Color(0xFF2563EB)
+            else -> Color(0xFF7C3AED)
         }
     }
 
@@ -115,7 +97,7 @@ fun AudioPlayerScreen(
 
         // Fondo desenfocado con la portada
         AsyncImage(
-            model = current.artUri,
+            model = current.uri,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -166,7 +148,7 @@ fun AudioPlayerScreen(
                         .background(Color.Black.copy(alpha = 0.3f))
                 ) {
                     AsyncImage(
-                        model = current.artUri,
+                        model = current.uri,
                         contentDescription = "Portada",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -325,9 +307,9 @@ fun AudioPlayerScreen(
                     }
                     IconButton(onClick = { /* toggle favorito */ }) {
                         Icon(
-                            if (snapshot.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            Icons.Filled.Favorite,
                             contentDescription = "Me gusta",
-                            tint = if (snapshot.isFavorite) Color(0xFFE53935) else Color.White.copy(alpha = 0.7f),
+                            tint = Color.White.copy(alpha = 0.7f),
                             modifier = Modifier.size(24.dp)
                         )
                     }

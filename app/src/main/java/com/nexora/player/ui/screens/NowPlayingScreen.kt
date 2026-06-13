@@ -11,13 +11,14 @@ import com.nexora.player.playback.PlayerEngine
 
 @Composable
 fun NowPlayingScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit = {}
 ) {
     val snapshot by PlayerEngine.snapshot.collectAsState()
     val current = snapshot.currentItem
 
     when (current?.kind) {
-        MediaKind.VIDEO -> VideoPlayerScreen(modifier = modifier.fillMaxSize(), current = current)
-        MediaKind.AUDIO, null -> AudioPlayerScreen(modifier = modifier.fillMaxSize(), current = current)
+        MediaKind.VIDEO -> VideoPlayerScreen(modifier = modifier.fillMaxSize(), current = current, onClose = onClose)
+        MediaKind.AUDIO, null -> AudioPlayerScreen(modifier = modifier.fillMaxSize(), current = current, onClose = onClose)
     }
 }

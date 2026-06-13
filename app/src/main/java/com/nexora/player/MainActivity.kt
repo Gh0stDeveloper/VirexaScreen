@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -26,7 +25,6 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -181,29 +179,17 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (showNowPlaying) {
-                    val current = state.currentItem
-                    if (current?.kind == MediaKind.VIDEO) {
-                        androidx.compose.ui.window.Dialog(
-                            onDismissRequest = { showNowPlaying = false },
-                            properties = androidx.compose.ui.window.DialogProperties(
-                                usePlatformDefaultWidth = false
+                    androidx.compose.ui.window.Dialog(
+                        onDismissRequest = { showNowPlaying = false },
+                        properties = androidx.compose.ui.window.DialogProperties(
+                            usePlatformDefaultWidth = false
+                        )
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            NowPlayingScreen(
+                                modifier = Modifier.fillMaxSize(),
+                                onClose = { showNowPlaying = false }
                             )
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                NowPlayingScreen(modifier = Modifier.fillMaxSize())
-                            }
-                        }
-                    } else {
-                        ModalBottomSheet(
-                            onDismissRequest = { showNowPlaying = false }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 620.dp)
-                            ) {
-                                NowPlayingScreen(modifier = Modifier.fillMaxSize())
-                            }
                         }
                     }
                 }

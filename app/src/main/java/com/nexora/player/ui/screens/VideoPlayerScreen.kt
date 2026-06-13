@@ -101,7 +101,7 @@ import kotlin.math.roundToInt
 fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
     current: MediaEntry?,
-    onClose: () -> Unit
+    onClose: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -137,9 +137,9 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(showControls) {
+    LaunchedEffect(showControls, isLandscape) {
         if (showControls) {
-            delay(3000)
+            delay(if (isLandscape) 5000 else 3200)
             showControls = false
         }
     }
@@ -424,6 +424,7 @@ private fun VideoOverlayChrome(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             TopChrome(
+                currentItem = currentItem,
                 queueCount = queueCount,
                 isLandscape = isLandscape,
                 onBack = onBack,
@@ -497,6 +498,7 @@ private fun VideoOverlayChrome(
             }
 
             BottomChrome(
+                currentItem = currentItem,
                 isLandscape = isLandscape,
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -517,47 +519,54 @@ private fun TopChrome(
     onToggleQueue: () -> Unit,
     onFullscreenToggle: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = if (isLandscape) 2.dp else 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.Black.copy(alpha = 0.34f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
-        FilledTonalIconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
-        }
-
-        Column(
+        Row(
             modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = if (isLandscape) 8.dp else 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = currentItem.title,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                maxLines = 1
-            )
-            Text(
-                text = currentItem.folder?.takeIf { it.isNotBlank() } ?: stringResource(R.string.video_local_label),
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.72f),
-                maxLines = 1
-            )
-        }
-
-        if (queueCount > 1) {
-            FilledTonalIconButton(onClick = onToggleQueue) {
-                Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Lista de reproducción")
+            FilledTonalIconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
             }
-        }
 
-        IconButton(onClick = onFullscreenToggle) {
-            Icon(
-                imageVector = if (isLandscape) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                contentDescription = if (isLandscape) "Minimizar" else "Pantalla completa",
-                tint = Color.White
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+            ) {
+                Text(
+                    text = currentItem.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1
+                )
+                Text(
+                    text = currentItem.folder?.takeIf { it.isNotBlank() } ?: stringResource(R.string.video_local_label),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.72f),
+                    maxLines = 1
+                )
+            }
+
+            if (queueCount > 1) {
+                FilledTonalIconButton(onClick = onToggleQueue) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = "Lista de reproducción")
+                }
+            }
+
+            IconButton(onClick = onFullscreenToggle) {
+                Icon(
+                    imageVector = if (isLandscape) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (isLandscape) "Minimizar" else "Pantalla completa",
+                    tint = Color.White
+                )
+            }
         }
     }
 }
@@ -572,9 +581,10 @@ private fun BottomChrome(
     onToggleQueue: () -> Unit,
     onFullscreenToggle: () -> Unit
 ) {
-    Card(
+    Surface(
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.30f)),
+        color = Color.Black.copy(alpha = 0.34f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
         modifier = Modifier.fillMaxWidth(if (isLandscape) 0.76f else 1f)
     ) {
         Column(
@@ -699,10 +709,10 @@ private fun QueueDrawer(
     startIndex: Int,
     onItemClick: (Int) -> Unit
 ) {
-    Card(
+    Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.72f)),
+        color = Color.Black.copy(alpha = 0.70f),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
         Column(
@@ -852,10 +862,10 @@ private fun SeekFeedbackHud(
     modifier: Modifier = Modifier
 ) {
     val forward = deltaMs >= 0L
-    Card(
+    Surface(
         modifier = modifier,
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.72f)),
+        color = Color.Black.copy(alpha = 0.70f),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
     ) {
         Row(

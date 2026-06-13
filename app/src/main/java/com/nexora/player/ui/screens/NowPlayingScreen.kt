@@ -18,7 +18,7 @@ fun NowPlayingScreen(
     val current = snapshot.currentItem
 
     when (current?.kind) {
-        MediaKind.VIDEO -> VideoPlayerScreen(modifier = modifier.fillMaxSize(), current = current, onClose = onClose)
-        MediaKind.AUDIO, null -> AudioPlayerScreen(modifier = modifier.fillMaxSize(), current = current, onClose = onClose)
+        MediaKind.VIDEO -> VideoPlayerScreen(modifier.fillMaxSize(), current, onClose)
+        MediaKind.AUDIO, null -> AudioPlayerScreen(modifier.fillMaxSize(), current, onClose)
     }
 }

@@ -263,6 +263,7 @@ fun VideoPlayerScreen(
         AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
             VideoOverlayChrome(
                 modifier = Modifier.fillMaxSize().zIndex(2f),
+                currentItem = currentItem,
                 queueCount = queue.size,
                 queueFromCurrent = queueFromCurrent,
                 queueStartIndex = if (snapshot.currentIndex in queue.indices) snapshot.currentIndex + 1 else 1,

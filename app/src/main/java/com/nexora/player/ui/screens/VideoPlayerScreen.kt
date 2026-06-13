@@ -7,7 +7,6 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.view.ViewGroup
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -67,7 +66,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +80,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.getSystemService
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -96,20 +95,19 @@ import com.nexora.player.ui.components.MediaArtwork
 import com.nexora.player.ui.components.PlaybackSeekBar
 import com.nexora.player.ui.components.formatDuration
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
 fun VideoPlayerScreen(
     modifier: Modifier = Modifier,
-    current: MediaEntry?
+    current: MediaEntry?,
+    onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val activity = context.findActivity()
     val exoPlayer = PlayerEngine.get(context)
     val snapshot by PlayerEngine.snapshot.collectAsState()
-    val scope = rememberCoroutineScope()
     val audioManager = context.getSystemService<AudioManager>()
     val maxVolume = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 1
     val currentVolume = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
@@ -157,7 +155,7 @@ fun VideoPlayerScreen(
         if (isLandscape) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         } else {
-            dispatchBackPress(context)
+            onClose()
         }
     }
 
@@ -212,13 +210,11 @@ fun VideoPlayerScreen(
         if (isLandscape) {
             LandscapePlayerSurface(
                 exoPlayer = exoPlayer,
-                currentItem = currentItem,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
             PortraitPlayerSurface(
                 exoPlayer = exoPlayer,
-                currentItem = currentItem,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(240.dp)
@@ -230,6 +226,7 @@ fun VideoPlayerScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(0f)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { showControls = !showControls },
@@ -246,7 +243,7 @@ fun VideoPlayerScreen(
         )
 
         GestureControlOverlay(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().zIndex(0f),
             brightness = brightness,
             volume = volumeFraction,
             onBrightnessChange = ::setBrightness,
@@ -258,14 +255,14 @@ fun VideoPlayerScreen(
                 deltaMs = seekFeedbackMs,
                 modifier = Modifier
                     .align(Alignment.Center)
+                    .zIndex(2f)
                     .padding(24.dp)
             )
         }
 
         AnimatedVisibility(visible = showControls, enter = fadeIn(), exit = fadeOut()) {
             VideoOverlayChrome(
-                modifier = Modifier.fillMaxSize(),
-                currentItem = currentItem,
+                modifier = Modifier.fillMaxSize().zIndex(2f),
                 queueCount = queue.size,
                 queueFromCurrent = queueFromCurrent,
                 queueStartIndex = if (snapshot.currentIndex in queue.indices) snapshot.currentIndex + 1 else 1,
@@ -300,7 +297,7 @@ fun VideoPlayerScreen(
                     if (isLandscape) {
                         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                     } else {
-                        dispatchBackPress(context)
+                        onClose()
                     }
                 },
                 onJumpToQueueIndex = { index ->
@@ -314,6 +311,7 @@ fun VideoPlayerScreen(
             QueueDrawer(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(2f)
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 items = queueFromCurrent,
@@ -332,7 +330,6 @@ fun VideoPlayerScreen(
 @Composable
 private fun LandscapePlayerSurface(
     exoPlayer: androidx.media3.common.Player,
-    currentItem: MediaEntry,
     modifier: Modifier = Modifier
 ) {
     AndroidView(
@@ -354,7 +351,6 @@ private fun LandscapePlayerSurface(
 @Composable
 private fun PortraitPlayerSurface(
     exoPlayer: androidx.media3.common.Player,
-    currentItem: MediaEntry,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -428,7 +424,6 @@ private fun VideoOverlayChrome(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             TopChrome(
-                currentItem = currentItem,
                 queueCount = queueCount,
                 isLandscape = isLandscape,
                 onBack = onBack,
@@ -502,7 +497,6 @@ private fun VideoOverlayChrome(
             }
 
             BottomChrome(
-                currentItem = currentItem,
                 isLandscape = isLandscape,
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -891,19 +885,8 @@ private fun SeekFeedbackHud(
     }
 }
 
-private fun dispatchBackPress(context: Context) {
-    val activity = context.findComponentActivity()
-    activity?.onBackPressedDispatcher?.onBackPressed()
-}
-
 private fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
-
-private fun Context.findComponentActivity(): ComponentActivity? = when (this) {
-    is ComponentActivity -> this
-    is ContextWrapper -> baseContext.findComponentActivity()
     else -> null
 }

@@ -1,8 +1,6 @@
 package com.nexora.player.ui.components
 
-import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,14 +193,11 @@ fun LyricsView(
                             targetValue = if (active) 1.06f else 1f,
                             label = "lyrics_scale"
                         )
-                        val color by animateColorAsState(
-                            targetValue = when {
-                                active -> accent
-                                past -> Color.White
-                                else -> Color.White.copy(alpha = 0.42f)
-                            },
-                            label = "lyrics_color"
-                        )
+                        val color = when {
+                            active -> accent
+                            past -> Color.White
+                            else -> Color.White.copy(alpha = 0.42f)
+                        }
 
                         Surface(
                             shape = RoundedCornerShape(22.dp),

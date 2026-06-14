@@ -1,15 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:id="@android:id/background">
+    <item>
         <shape android:shape="rectangle">
             <corners android:radius="999dp" />
-            <solid android:color="#2AFFFFFF" />
+            <solid android:color="#22FFFFFF" />
         </shape>
     </item>
     <item android:id="@android:id/progress">
         <clip>
             <shape android:shape="rectangle">
                 <corners android:radius="999dp" />
-                <solid android:color="@color/nexora_accent" />
+                <solid android:color="#FFE53935" />
             </shape>
         </clip>
     </item>

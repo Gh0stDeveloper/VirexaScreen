@@ -42,6 +42,8 @@ class PlayerService : MediaSessionService() {
         const val ACTION_PLAY_PAUSE = "com.nexora.player.action.PLAY_PAUSE"
         const val ACTION_NEXT = "com.nexora.player.action.NEXT"
         const val ACTION_PREVIOUS = "com.nexora.player.action.PREVIOUS"
+        const val ACTION_SEEK_BACK_10 = "com.nexora.player.action.SEEK_BACK_10"
+        const val ACTION_SEEK_FORWARD_10 = "com.nexora.player.action.SEEK_FORWARD_10"
         const val ACTION_STOP = "com.nexora.player.action.STOP"
         const val ACTION_TOGGLE_FAVORITE = "com.nexora.player.action.TOGGLE_FAVORITE"
     }
@@ -71,6 +73,8 @@ class PlayerService : MediaSessionService() {
             ACTION_PLAY_PAUSE -> PlayerEngine.togglePlayPause(this)
             ACTION_NEXT -> PlayerEngine.skipNext(this)
             ACTION_PREVIOUS -> PlayerEngine.skipPrevious(this)
+            ACTION_SEEK_BACK_10 -> PlayerEngine.seekBy(this, -10_000L)
+            ACTION_SEEK_FORWARD_10 -> PlayerEngine.seekBy(this, 10_000L)
             ACTION_STOP -> {
                 PlayerEngine.clear(this)
                 hideNotification()
@@ -146,8 +150,8 @@ class PlayerService : MediaSessionService() {
         val compact = RemoteViews(packageName, R.layout.notification_player_compact)
         val expanded = RemoteViews(packageName, R.layout.notification_player_expanded)
 
-        bindViews(compact, current, player, positionMs, durationMs, progress, isFavorite)
-        bindViews(expanded, current, player, positionMs, durationMs, progress, isFavorite)
+        bindViews(compact, current, player, positionMs, durationMs, progress, isFavorite, expanded = false)
+        bindViews(expanded, current, player, positionMs, durationMs, progress, isFavorite, expanded = true)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_playback)
@@ -163,9 +167,12 @@ class PlayerService : MediaSessionService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setColor(ContextCompat.getColor(this, R.color.nexora_accent))
+            .setColorized(true)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setCustomContentView(compact)
             .setCustomBigContentView(expanded)
+            .setCustomHeadsUpContentView(compact)
             .build()
     }
 
@@ -176,7 +183,8 @@ class PlayerService : MediaSessionService() {
         positionMs: Long,
         durationMs: Long,
         progress: Int,
-        isFavorite: Boolean
+        isFavorite: Boolean,
+        expanded: Boolean
     ) {
         val subtitle = current.artist.ifBlank { current.album.ifBlank { getString(R.string.notification_subtitle_playing) } }
         val albumLabel = current.album.ifBlank { current.folder.orEmpty() }
@@ -210,8 +218,24 @@ class PlayerService : MediaSessionService() {
         views.setOnClickPendingIntent(R.id.notification_next, serviceAction(ACTION_NEXT))
         views.setOnClickPendingIntent(R.id.notification_stop, serviceAction(ACTION_STOP))
 
+        if (expanded) {
+            views.setOnClickPendingIntent(R.id.notification_seek_back, serviceAction(ACTION_SEEK_BACK_10))
+            views.setOnClickPendingIntent(R.id.notification_seek_forward, serviceAction(ACTION_SEEK_FORWARD_10))
+            views.setInt(R.id.notification_seek_back, "setBackgroundResource", R.drawable.bg_notification_button)
+            views.setInt(R.id.notification_seek_forward, "setBackgroundResource", R.drawable.bg_notification_button)
+            views.setImageViewResource(R.id.notification_seek_back, R.drawable.ic_notification_seek_back)
+            views.setImageViewResource(R.id.notification_seek_forward, R.drawable.ic_notification_seek_forward)
+        }
+
         views.setViewVisibility(R.id.notification_album, if (albumLabel.isBlank()) View.GONE else View.VISIBLE)
 
+        if (expanded) {
+            views.setInt(R.id.notification_title, "setTextSize", 16)
+            views.setInt(R.id.notification_artist, "setTextSize", 13)
+        } else {
+            views.setInt(R.id.notification_title, "setTextSize", 15)
+            views.setInt(R.id.notification_artist, "setTextSize", 12)
+        }
     }
 
     private suspend fun resolveFavoriteState(current: MediaEntry, forceRefresh: Boolean): Boolean {

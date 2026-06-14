@@ -63,6 +63,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -87,6 +88,11 @@ import androidx.compose.ui.unit.sp
 import com.nexora.player.R
 import com.nexora.player.data.local.FavoriteMediaEntity
 import com.nexora.player.data.local.NexoraDatabase
+import com.nexora.player.data.lyrics.LrcParser
+import com.nexora.player.data.lyrics.Lyrics
+import com.nexora.player.data.lyrics.LyricsRepository
+import com.nexora.player.ui.components.LyricsAndQueueCard
+import com.nexora.player.ui.screens.LyricsEditorDialog
 import com.nexora.player.data.model.MediaEntry
 import com.nexora.player.data.model.MediaKind
 import com.nexora.player.playback.PlayerEngine
@@ -107,6 +113,12 @@ fun AudioPlayerScreen(
     val snapshot by PlayerEngine.snapshot.collectAsState()
     val scope = rememberCoroutineScope()
     val favorites by NexoraDatabase.get(context).favoritesDao().observeAll().collectAsState(initial = emptyList())
+
+    val lyricsRepository = remember(context) { LyricsRepository(context, NexoraDatabase.get(context)) }
+    var lyrics by remember { mutableStateOf<Lyrics?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
+    var allowOnlineLyrics by rememberSaveable(current?.id) { mutableStateOf(false) }
+    var showLyricsEditor by rememberSaveable(current?.id) { mutableStateOf(false) }
 
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -151,6 +163,21 @@ fun AudioPlayerScreen(
             durationMs = player.duration.takeIf { it > 0L } ?: current.durationMs
             delay(350)
         }
+    }
+
+    LaunchedEffect(current?.id, allowOnlineLyrics) {
+        val item = current
+        if (item == null) {
+            lyrics = null
+            lyricsLoading = false
+            return@LaunchedEffect
+        }
+        lyricsLoading = true
+        lyrics = null
+        lyrics = runCatching {
+            lyricsRepository.loadLyrics(item, allowOnlineSearch = allowOnlineLyrics)
+        }.getOrNull()
+        lyricsLoading = false
     }
 
     Box(
@@ -339,151 +366,44 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Card(
-                shape = RoundedCornerShape(32.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)),
+            LyricsAndQueueCard(
+                lyrics = lyrics,
+                lyricsLoading = lyricsLoading,
+                positionMs = positionMs,
+                queue = queue,
+                currentIndex = currentIndex,
+                onJumpToQueueItem = { PlayerEngine.jumpTo(context, it) },
+                onSearchOnline = { allowOnlineLyrics = true },
+                onEditManual = { showLyricsEditor = true },
                 modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = formatDuration(positionMs),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                        Slider(
-                            value = positionMs.toFloat().coerceIn(0f, durationMs.coerceAtLeast(1L).toFloat()),
-                            onValueChange = { player.seekTo(it.toLong()) },
-                            valueRange = 0f..durationMs.coerceAtLeast(1L).toFloat(),
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 10.dp),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.24f)
-                            )
-                        )
-                        Text(
-                            text = formatDuration(durationMs),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.White.copy(alpha = 0.75f)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { PlayerEngine.skipPrevious(context) }) {
-                            Icon(
-                                imageVector = Icons.Filled.SkipPrevious,
-                                contentDescription = stringResource(R.string.player_previous),
-                                tint = Color.White,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
-
-                        FilledTonalIconButton(
-                            onClick = { PlayerEngine.togglePlayPause(context) },
-                            modifier = Modifier.size(68.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (snapshot.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (snapshot.isPlaying) stringResource(R.string.player_pause) else stringResource(R.string.player_play),
-                                tint = Color.White,
-                                modifier = Modifier.size(30.dp)
-                            )
-                        }
-
-                        IconButton(onClick = { PlayerEngine.skipNext(context) }) {
-                            Icon(
-                                imageVector = Icons.Filled.SkipNext,
-                                contentDescription = stringResource(R.string.player_next),
-                                tint = Color.White,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
-
-                        IconButton(onClick = { scope.launch { toggleFavorite(context, current) } }) {
-                            Icon(
-                                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
-                                tint = if (isFavorite) Color(0xFFF87171) else Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        IconButton(onClick = { }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.PlaylistPlay,
-                                contentDescription = "Ver cola",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
-                    OutlinedCard(
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Siguiente en cola",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = "${upNext.size}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
-                            }
-
-                            if (upNext.isEmpty()) {
-                                Text(
-                                    text = "No hay más elementos en la cola.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
-                            } else {
-                                LazyColumn(
-                                    modifier = Modifier.heightIn(max = 240.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    itemsIndexed(upNext.take(4), key = { index, item -> item.id + index }) { index, item ->
-                                        MediaItemRow(
-                                            item = item,
-                                            onClick = { PlayerEngine.jumpTo(context, currentIndex + index + 1) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            )
         }
     }
+
+    if (showLyricsEditor && current != null) {
+        LyricsEditorDialog(
+            currentPositionMs = positionMs,
+            initialText = lyrics?.rawText.orEmpty(),
+            onSave = { rawText, exportToFile ->
+                scope.launch {
+                    val parsed = LrcParser.parse(
+                        rawText = rawText,
+                        mediaId = current.id,
+                        title = current.title,
+                        artist = current.artist,
+                        album = current.album,
+                        source = com.nexora.player.data.lyrics.LyricsSource.MANUAL
+                    )
+                    lyricsRepository.saveLyrics(current, parsed, exportToSidecarFile = exportToFile)
+                    lyrics = parsed
+                    showLyricsEditor = false
+                }
+            },
+            onDismiss = { showLyricsEditor = false }
+        )
+    }
 }
+
 
 @Composable
 private fun TopBar(

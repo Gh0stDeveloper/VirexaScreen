@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,6 +83,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -105,6 +107,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToLong
 
+
+
+private enum class ArtworkStyle {
+    DISC,
+    SQUARE,
+    COVER;
+
+    fun next(): ArtworkStyle = when (this) {
+        DISC -> SQUARE
+        SQUARE -> COVER
+        COVER -> DISC
+    }
+}
 @Composable
 fun AudioPlayerScreen(
     modifier: Modifier = Modifier,
@@ -633,13 +648,6 @@ private fun TransportControls(
             )
         }
     }
-}
-
-
-private fun ArtworkStyle.next(): ArtworkStyle = when (this) {
-    ArtworkStyle.DISC -> ArtworkStyle.SQUARE
-    ArtworkStyle.SQUARE -> ArtworkStyle.COVER
-    ArtworkStyle.COVER -> ArtworkStyle.DISC
 }
 
 private suspend fun toggleFavorite(context: Context, entry: MediaEntry?) {

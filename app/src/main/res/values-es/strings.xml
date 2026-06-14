@@ -132,4 +132,19 @@
     <string name="media_favorite_remove">Quitar de favoritos</string>
     <string name="media_artwork_audio">Portada de audio</string>
     <string name="media_artwork_video">Miniatura de video</string>
+    <string name="lyrics_title">Letras</string>
+    <string name="lyrics_tab_lyrics">Letras</string>
+    <string name="lyrics_tab_queue">Cola</string>
+    <string name="lyrics_loading">Cargando letras…</string>
+    <string name="lyrics_empty_title">Aún no hay letras</string>
+    <string name="lyrics_empty_body">Puedes buscarlas automáticamente, pegarlas manualmente o guardarlas localmente para usarlas sin conexión.</string>
+    <string name="lyrics_search_online">Buscar letras</string>
+    <string name="lyrics_edit_manual">Editar manualmente</string>
+    <string name="lyrics_editor_title">Editor de letras</string>
+    <string name="lyrics_editor_subtitle">Pega una letra, selecciona una línea y marca el tiempo actual para sincronizarla.</string>
+    <string name="lyrics_editor_input_label">Letra en formato libre o LRC</string>
+    <string name="lyrics_editor_export_lrc">Guardar también como .lrc cuando sea posible</string>
+    <string name="lyrics_mark_time">Marcar tiempo actual</string>
+    <string name="queue_next">Siguiente en cola</string>
+    <string name="queue_empty_short">No hay más elementos en la cola.</string>
 </resources>

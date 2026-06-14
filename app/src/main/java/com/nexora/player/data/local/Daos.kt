@@ -59,3 +59,18 @@ interface HistoryDao {
     @Query("DELETE FROM playback_history")
     suspend fun clear()
 }
+
+@Dao
+interface LyricsDao {
+    @Query("SELECT * FROM lyrics WHERE mediaId = :mediaId LIMIT 1")
+    suspend fun getByMediaId(mediaId: Long): LyricsEntity?
+
+    @Query("SELECT * FROM lyrics WHERE mediaId = :mediaId LIMIT 1")
+    fun observeByMediaId(mediaId: Long): Flow<LyricsEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: LyricsEntity)
+
+    @Query("DELETE FROM lyrics WHERE mediaId = :mediaId")
+    suspend fun deleteByMediaId(mediaId: Long)
+}

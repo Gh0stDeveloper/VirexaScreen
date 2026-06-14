@@ -132,4 +132,19 @@
     <string name="media_favorite_remove">Remove from favorites</string>
     <string name="media_artwork_audio">Audio artwork</string>
     <string name="media_artwork_video">Video thumbnail</string>
+    <string name="lyrics_title">Lyrics</string>
+    <string name="lyrics_tab_lyrics">Lyrics</string>
+    <string name="lyrics_tab_queue">Queue</string>
+    <string name="lyrics_loading">Loading lyrics…</string>
+    <string name="lyrics_empty_title">No lyrics yet</string>
+    <string name="lyrics_empty_body">You can search automatically, paste them manually, or save them locally for offline use.</string>
+    <string name="lyrics_search_online">Search lyrics</string>
+    <string name="lyrics_edit_manual">Edit manually</string>
+    <string name="lyrics_editor_title">Lyrics editor</string>
+    <string name="lyrics_editor_subtitle">Paste any lyrics, select a line, and mark the current time to sync it.</string>
+    <string name="lyrics_editor_input_label">Free text or LRC lyrics</string>
+    <string name="lyrics_editor_export_lrc">Also save as .lrc when possible</string>
+    <string name="lyrics_mark_time">Mark current time</string>
+    <string name="queue_next">Up next</string>
+    <string name="queue_empty_short">There are no more items in the queue.</string>
 </resources>

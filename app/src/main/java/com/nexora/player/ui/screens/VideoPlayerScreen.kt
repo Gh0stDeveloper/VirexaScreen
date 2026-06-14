@@ -388,20 +388,10 @@ private fun PortraitScreen(
                     )
             )
 
-            // Top bar (Back + Fullscreen)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 4.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                NxIconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Volver", onClick = onClose)
-                Spacer(Modifier.weight(1f))
-                NxIconBtn(Icons.Filled.Fullscreen, "Pantalla completa", onClick = onEnterFullscreen)
-            }
-
             // Capa de doble-tap para seek
+            // IMPORTANTE: se compone ANTES de la barra superior para quedar
+            // DEBAJO en el orden de hit-testing. Así los botones de Volver
+            // y Pantalla completa reciben el toque primero.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -433,6 +423,21 @@ private fun PortraitScreen(
                         }
                     }
             )
+
+            // Top bar (Back + Fullscreen)
+            // Compuesta DESPUÉS de la capa de doble-tap → queda arriba y
+            // sus botones (clickable) consumen el toque antes que la capa de gestos.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NxIconBtn(Icons.AutoMirrored.Filled.ArrowBack, "Volver", onClick = onClose)
+                Spacer(Modifier.weight(1f))
+                NxIconBtn(Icons.Filled.Fullscreen, "Pantalla completa", onClick = onEnterFullscreen)
+            }
 
             // Seek feedback HUD — Column provee ColumnScope explícito,
             // evitando la ambigüedad con el ColumnScope externo del layout.

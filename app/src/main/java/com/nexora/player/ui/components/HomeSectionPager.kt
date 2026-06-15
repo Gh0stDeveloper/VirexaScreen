@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.Icon
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +32,7 @@ import com.nexora.player.ui.screens.MusicScreen
 import com.nexora.player.ui.screens.PlaylistsScreen
 import com.nexora.player.ui.screens.VideoScreen
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeSectionPager(
     modifier: Modifier = Modifier,
@@ -110,7 +111,6 @@ fun HomeSectionPager(
                                 AppDestination.MUSIC -> Icons.Filled.LibraryMusic
                                 AppDestination.VIDEOS -> Icons.Filled.Movie
                                 AppDestination.PLAYLISTS -> Icons.AutoMirrored.Filled.PlaylistPlay
-                                else -> Icons.Filled.LibraryMusic
                             },
                             contentDescription = null
                         )
@@ -148,7 +148,6 @@ fun HomeSectionPager(
                     onRefresh = onRefreshVideo,
                     onSortSelected = onVideoSortSelected
                 )
-
                 AppDestination.PLAYLISTS -> PlaylistsScreen(
                     modifier = Modifier.fillMaxSize(),
                     playlists = playlists,
@@ -156,8 +155,6 @@ fun HomeSectionPager(
                     onDeletePlaylist = onDeletePlaylist,
                     onOpenPlaylist = onOpenPlaylist
                 )
-
-                else -> Unit
             }
         }
     }

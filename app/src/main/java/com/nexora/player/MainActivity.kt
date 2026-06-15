@@ -296,6 +296,10 @@ private fun AppContent(
     }
 
     when (state.selectedDestination) {
+        AppDestination.MUSIC,
+        AppDestination.VIDEOS,
+        AppDestination.PLAYLISTS -> Unit
+
         AppDestination.QUEUE -> QueueScreen(
             modifier = modifier,
             queue = state.queue,

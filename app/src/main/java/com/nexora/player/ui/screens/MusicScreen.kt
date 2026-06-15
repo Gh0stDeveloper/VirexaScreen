@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,9 +121,9 @@ fun MusicScreen(
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        AssistChip(onClick = {}, label = { Text(stringResource(R.string.music_stats_visible, visibleCount)) })
-                        AssistChip(onClick = {}, label = { Text(stringResource(R.string.music_stats_hidden, hiddenAudioCount)) })
-                        AssistChip(onClick = {}, label = { Text(stringResource(R.string.music_stats_playlists, playlists.size)) })
+                        AssistChip(onClick = {}, label = { Text(localizedUiText("${visibleCount} visibles", "${visibleCount} visible")) })
+                        AssistChip(onClick = {}, label = { Text(localizedUiText("${hiddenAudioCount} ocultas", "${hiddenAudioCount} hidden")) })
+                        AssistChip(onClick = {}, label = { Text(localizedUiText("${playlists.size} listas", "${playlists.size} playlists")) })
                     }
                 }
             }
@@ -132,7 +133,7 @@ fun MusicScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = stringResource(R.string.music_continue_listening),
+                        text = localizedUiText("Continuar escuchando", "Continue listening"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -279,24 +280,32 @@ fun MusicScreen(
     pendingHideItem?.let { item ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { pendingHideItem = null },
-            title = { Text(stringResource(R.string.hide_song_title)) },
-            text = { Text(stringResource(R.string.hide_song_message, item.title)) },
+            title = { Text(localizedUiText("Ocultar canción", "Hide song")) },
+            text = { Text(localizedUiText("¿Quieres ocultar “${item.title}” de la biblioteca?", "Hide “${item.title}” from the library?")) },
             confirmButton = {
                 TextButton(onClick = {
                     onHideFromLibrary(item)
                     pendingHideItem = null
                 }) {
-                    Text(stringResource(R.string.hide_song_confirm))
+                    Text(localizedUiText("Ocultar", "Hide"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingHideItem = null }) {
-                    Text(stringResource(R.string.hide_song_cancel))
+                    Text(localizedUiText("No ocultar", "Keep visible"))
                 }
             }
         )
     }
 }
+
+
+@Composable
+private fun localizedUiText(es: String, en: String): String {
+    val language = LocalContext.current.resources.configuration.locales[0]?.language.orEmpty().lowercase()
+    return if (language.startsWith("en")) en else es
+}
+
 
 private fun PlaybackHistoryEntity.toMediaEntry(): MediaEntry {
     return MediaEntry(

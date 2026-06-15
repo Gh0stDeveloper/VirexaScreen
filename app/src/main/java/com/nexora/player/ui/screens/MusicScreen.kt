@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.InfoOutlined
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
@@ -306,7 +306,7 @@ fun MusicScreen(
                 )
 
                 SheetAction(
-                    icon = Icons.Filled.InfoOutlined,
+                    icon = Icons.Filled.Info,
                     label = localizedUiText("Información", "Information"),
                     onClick = { selectedItem = null }
                 )

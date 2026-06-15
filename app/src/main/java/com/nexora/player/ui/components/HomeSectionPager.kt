@@ -1,9 +1,11 @@
 package com.nexora.player.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -20,8 +22,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.nexora.player.R
 import com.nexora.player.data.local.PlaylistEntity
 import com.nexora.player.data.local.PlaybackHistoryEntity
@@ -31,6 +35,7 @@ import com.nexora.player.data.model.SortMode
 import com.nexora.player.ui.screens.MusicScreen
 import com.nexora.player.ui.screens.PlaylistsScreen
 import com.nexora.player.ui.screens.VideoScreen
+import kotlinx.coroutines.flow.collect
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +116,10 @@ fun HomeSectionPager(
                                 AppDestination.MUSIC -> Icons.Filled.LibraryMusic
                                 AppDestination.VIDEOS -> Icons.Filled.Movie
                                 AppDestination.PLAYLISTS -> Icons.AutoMirrored.Filled.PlaylistPlay
+                                AppDestination.QUEUE -> Icons.Filled.LibraryMusic
+                                AppDestination.FAVORITES -> Icons.Filled.LibraryMusic
+                                AppDestination.HISTORY -> Icons.Filled.LibraryMusic
+                                AppDestination.SETTINGS -> Icons.Filled.LibraryMusic
                             },
                             contentDescription = null
                         )
@@ -148,6 +157,7 @@ fun HomeSectionPager(
                     onRefresh = onRefreshVideo,
                     onSortSelected = onVideoSortSelected
                 )
+
                 AppDestination.PLAYLISTS -> PlaylistsScreen(
                     modifier = Modifier.fillMaxSize(),
                     playlists = playlists,
@@ -155,7 +165,36 @@ fun HomeSectionPager(
                     onDeletePlaylist = onDeletePlaylist,
                     onOpenPlaylist = onOpenPlaylist
                 )
+
+                AppDestination.QUEUE -> SectionUnavailableScreen(
+                    title = stringResource(R.string.nav_queue)
+                )
+
+                AppDestination.FAVORITES -> SectionUnavailableScreen(
+                    title = stringResource(R.string.nav_favorites)
+                )
+
+                AppDestination.HISTORY -> SectionUnavailableScreen(
+                    title = stringResource(R.string.nav_history)
+                )
+
+                AppDestination.SETTINGS -> SectionUnavailableScreen(
+                    title = stringResource(R.string.nav_settings)
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun SectionUnavailableScreen(title: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = title)
     }
 }

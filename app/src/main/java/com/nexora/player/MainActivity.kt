@@ -129,12 +129,13 @@ class MainActivity : AppCompatActivity() {
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             SearchField(
-                                query = state.search,
+                                query = searchQuery,
                                 expanded = searchExpanded,
                                 onExpandedChange = { searchExpanded = it },
-                                onQueryChange = viewModel::setSearch,
+                                onQueryChange = { searchQuery = it },
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            
                             GreetingBanner(
                                 greeting = greeting,
                                 modifier = Modifier.fillMaxWidth()

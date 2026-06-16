@@ -276,7 +276,7 @@ fun MusicScreen(
                             supportingContent = { Text(stringResource(R.string.add_to_playlist)) },
                             leadingContent = {
                                 Icon(
-                                    imageVector = QueueMusic,
+                                    imageVector = Icons.Filled.QueueMusic,
                                     contentDescription = null
                                 )
                             },

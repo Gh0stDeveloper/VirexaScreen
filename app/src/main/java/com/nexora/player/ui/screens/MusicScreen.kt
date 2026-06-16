@@ -258,7 +258,7 @@ fun MusicScreen(
                             supportingContent = { Text(stringResource(R.string.add_to_playlist)) },
                             leadingContent = {
                                 Icon(
-                                    imageVector = PlaylistPlay
+                                    imageVector = PlaylistPlay,
                                     contentDescription = null
                                 )
                             },

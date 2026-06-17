@@ -14,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 35
         versionCode = 5
-        versionName = "0.5.3"
+        versionName = "0.5.4"
     }
 
     val releaseKeystorePath = System.getenv("KEYSTORE_FILE") ?: "app/ghostnexora-release.jks"

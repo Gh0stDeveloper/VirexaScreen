@@ -11,6 +11,7 @@ import com.nexora.player.data.repository.MediaStoreRepository
 import com.nexora.player.playback.PlayerEngine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -161,6 +162,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (startIndex >= 0) playQueue(library, startIndex) else play(item)
     }
 
+    fun playPlaylistQueue(items: List<PlaylistItemEntity>, item: PlaylistItemEntity) {
+        val queue = items.map { it.toMediaEntry() }
+        val startIndex = queue.indexOfFirst { it.id == item.mediaId && it.kind.name == item.mediaKind }
+        if (startIndex >= 0) playQueue(queue, startIndex) else play(item.toMediaEntry())
+    }
+
     fun togglePlayPause() {
         PlayerEngine.togglePlayPause(context)
     }
@@ -270,12 +277,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return database.playlistsDao().observeItems(playlistId)
     }
 
+    fun playlistPreviewItems(playlistId: Long): Flow<List<PlaylistItemEntity>> {
+        return database.playlistsDao().observeItems(playlistId).map { it.take(4) }
+    }
+
     fun removeFromPlaylist(itemId: Long) {
         viewModelScope.launch {
             database.playlistsDao().deletePlaylistItem(itemId)
         }
     }
 
+    fun playFavoriteQueue(favorites: List<FavoriteMediaEntity>, favorite: FavoriteMediaEntity) {
+        val audioFavorites = favorites.map { it.toMediaEntry() }
+        val selected = favorite.toMediaEntry()
+        val startIndex = audioFavorites.indexOfFirst { it.id == selected.id && it.kind == selected.kind }
+        if (startIndex >= 0) {
+            playQueue(audioFavorites, startIndex)
+        } else {
+            play(selected)
+        }
+    }
+
+    @Deprecated("Use playFavoriteQueue for favorites section playback")
     fun playFavorite(favorite: FavoriteMediaEntity) {
         play(favorite.toMediaEntry())
     }

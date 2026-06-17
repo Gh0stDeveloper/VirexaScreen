@@ -258,7 +258,7 @@ private fun AppContent(
                 playlistItems = playlistItems,
                 availableSongs = viewModel.filteredAudio(),
                 onBack = onClosePlaylist,
-                onPlayItem = viewModel::playPlaylistItem,
+                onPlayItem = viewModel::playPlaylistQueue,
                 onRemoveItem = { viewModel.removeFromPlaylist(it.id) },
                 onAddSong = { song ->
                     viewModel.addToPlaylist(playlist, song)
@@ -358,13 +358,15 @@ private fun DestinationPagerContent(
                 playlists = state.playlists,
                 onCreatePlaylist = viewModel::createPlaylist,
                 onDeletePlaylist = viewModel::deletePlaylist,
-                onOpenPlaylist = onOpenPlaylist
+                onOpenPlaylist = onOpenPlaylist,
+                playlistPreviewItems = { playlistId -> viewModel.playlistPreviewItems(playlistId) }
             )
 
             AppDestination.FAVORITES -> FavoritesScreen(
                 modifier = Modifier.fillMaxSize(),
-                favorites = state.favorites,
-                onPlayFavorite = viewModel::playFavorite
+                favorites = state.favorites.filter { it.mediaKind == com.nexora.player.data.model.MediaKind.AUDIO.name },
+                onPlayFavoriteQueue = viewModel::playFavoriteQueue,
+                onToggleFavorite = viewModel::toggleFavorite
             )
 
             AppDestination.HISTORY -> HistoryScreen(

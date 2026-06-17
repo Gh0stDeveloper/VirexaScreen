@@ -88,7 +88,6 @@ class MainActivity : AppCompatActivity() {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
 
             var showNowPlaying by rememberSaveable { mutableStateOf(false) }
-            var searchQuery by rememberSaveable { mutableStateOf("") }
             var searchExpanded by rememberSaveable { mutableStateOf(false) }
             var lastAutoOpenedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
             var selectedPlaylistId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -133,10 +132,10 @@ class MainActivity : AppCompatActivity() {
                         ) {
                             GreetingBanner(
                                 greeting = greeting,
-                                query = searchQuery,
+                                query = state.search,
                                 expanded = searchExpanded,
                                 onExpandedChange = { searchExpanded = it },
-                                onQueryChange = { searchQuery = it },
+                                onQueryChange = { viewModel.setSearch(it) },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }

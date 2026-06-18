@@ -171,7 +171,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun downloadOnlineTrack(track: OnlineTrack, mode: DownloadStorageMode = _uiState.value.preferences.downloadStorageMode) {
         if (track.downloadUrl.isNullOrBlank() || mode == DownloadStorageMode.ASK_FIRST_TIME) return
         viewModelScope.launch {
-            runCatching { OnlineTrackDownloader.download(context, track, mode) }
+            try {
+                OnlineTrackDownloader.download(context, track, mode)
+            } catch (_: Throwable) {
+                // Intentionally ignore download failures here; caller UI handles flow.
+            }
         }
     }
 
@@ -203,21 +207,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         onlineSearchJob = viewModelScope.launch {
             delay(250)
             _uiState.value = _uiState.value.copy(onlineLoading = true, onlineError = null)
-            val results = runCatching { onlineRepository.search(query, limit = 20) }
-                .getOrElse { throwable ->
-                    _uiState.value = _uiState.value.copy(
-                        onlineLoading = false,
-                        onlineTracks = emptyList(),
-                        onlineError = throwable.message ?: "Online search failed"
-                    )
-                    return@launch
-                }
-
-            _uiState.value = _uiState.value.copy(
-                onlineLoading = false,
-                onlineTracks = results,
-                onlineError = null
-            )
+            try {
+                val results = onlineRepository.search(query, limit = 20)
+                _uiState.value = _uiState.value.copy(
+                    onlineLoading = false,
+                    onlineTracks = results,
+                    onlineError = null
+                )
+            } catch (throwable: Throwable) {
+                _uiState.value = _uiState.value.copy(
+                    onlineLoading = false,
+                    onlineTracks = emptyList(),
+                    onlineError = throwable.message ?: "Online search failed"
+                )
+            }
         }
     }
 

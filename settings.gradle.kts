@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NexoraPlayer"
+rootProject.name = "VirexaScreen"
 include(":app")

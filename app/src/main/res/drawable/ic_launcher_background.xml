@@ -1,4 +1,3 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="@color/nexora_icon_bg" />
-    <corners android:radius="24dp" />
+    <gradient android:angle="90" android:endColor="#111521" android:startColor="#05070C" />
 </shape>

@@ -1,7 +1,11 @@
 <resources>
-    <color name="nexora_splash_bg">#0B1020</color>
-    <color name="nexora_surface">#111827</color>
-    <color name="nexora_accent">#7C3AED</color>
-    <color name="nexora_accent_alt">#22D3EE</color>
-    <color name="nexora_icon_bg">#0F172A</color>
+    <color name="virexa_background">#F4F6FB</color>
+    <color name="virexa_surface">#FFFFFF</color>
+    <color name="virexa_surface_variant">#E8EBF3</color>
+    <color name="virexa_primary">#5F55FF</color>
+    <color name="virexa_primary_container">#E7E4FF</color>
+    <color name="virexa_secondary">#0FAF98</color>
+    <color name="virexa_error">#E63B4A</color>
+    <color name="virexa_success">#1FBF75</color>
+    <color name="virexa_splash_background">#0A0D14</color>
 </resources>

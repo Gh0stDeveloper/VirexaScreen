@@ -10,10 +10,12 @@ import com.virexa.screen.data.*
 import com.virexa.screen.service.ScreenRecordService
 import com.virexa.screen.service.FloatingBubbleService
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -128,5 +130,5 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 private fun <T> kotlinx.coroutines.flow.Flow<T>.stateInViewModel(scope: kotlinx.coroutines.CoroutineScope, initialValue: T): StateFlow<T> {
-    return kotlinx.coroutines.flow.stateIn(scope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), initialValue)
+    return stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialValue)
 }

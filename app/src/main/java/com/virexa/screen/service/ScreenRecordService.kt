@@ -1,5 +1,6 @@
 package com.virexa.screen.service
 
+import android.app.Activity
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -63,7 +64,7 @@ class ScreenRecordService : Service() {
     private fun startCapture(intent: Intent) {
         if (started) return
 
-        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, RESULT_CANCELED)
+        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
         val projectionData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
         } else {

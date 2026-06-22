@@ -92,7 +92,7 @@ fun SplashScreen(onDone: () -> Unit) {
                 BrandMark(modifier = Modifier.size(92.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Virexa Screen", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    Text("Tu grabador confiable", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Grabación limpia. Controles rápidos. Diseño minimalista.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)) {
                     Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

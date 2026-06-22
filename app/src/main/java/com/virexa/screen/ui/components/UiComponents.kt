@@ -26,7 +26,7 @@ import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.InfoOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -49,7 +50,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -160,14 +160,13 @@ fun MetricPill(label: String, value: String) {
 @Composable
 fun QualityCard(option: QualityOption, selected: Boolean, onClick: () -> Unit) {
     val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-    ElevatedCard(
+    Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = CardShape,
         border = BorderStroke(1.dp, borderColor),
-        colors = CardDefaults.elevatedCardColors(
+        colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surface,
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -198,11 +197,11 @@ fun QualityCard(option: QualityOption, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 fun AudioModeCard(mode: AudioMode, selected: Boolean, onClick: () -> Unit) {
-    OutlinedCard(
+    Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = CardShape,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-        colors = CardDefaults.outlinedCardColors(
+        colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f) else MaterialTheme.colorScheme.surface,
         ),
     ) {
@@ -255,7 +254,7 @@ fun PermissionStatusCard(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.InfoOutline,
+                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Info,
                         contentDescription = null,
                         tint = if (granted) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -274,10 +273,11 @@ fun PermissionStatusCard(
 
 @Composable
 fun RecordingCard(recording: RecordingFile, onClick: () -> Unit, onDelete: () -> Unit) {
-    ElevatedCard(
+    Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = CardShape,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {

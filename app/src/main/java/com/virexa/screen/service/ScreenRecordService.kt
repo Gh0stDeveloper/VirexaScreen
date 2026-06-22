@@ -12,7 +12,9 @@ import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
@@ -47,6 +49,12 @@ class ScreenRecordService : Service() {
     private var outputFile: File? = null
     private var started = false
     private var currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            handleProjectionStopped("La grabación se detuvo")
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -92,6 +100,8 @@ class ScreenRecordService : Service() {
         try {
             val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, projectionData)
+                ?: throw IllegalStateException("No se pudo obtener MediaProjection")
+            mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
             val outputFolder = intent.getStringExtra(EXTRA_OUTPUT_FOLDER) ?: "VirexaScreen"
             outputFile = recorderRepository.outputFileForNewRecording(outputFolder)
 
@@ -174,10 +184,15 @@ class ScreenRecordService : Service() {
     }
 
     private fun stopCapture() {
-        if (!started) {
+        if (!started && mediaProjection == null) {
             stopSelf()
             return
         }
+        handleProjectionStopped("Grabación finalizada")
+    }
+
+    private fun handleProjectionStopped(message: String) {
+        runCatching { mediaProjection?.unregisterCallback(projectionCallback) }
 
         try {
             mediaRecorder?.apply {
@@ -187,8 +202,8 @@ class ScreenRecordService : Service() {
             }
         } catch (_: Throwable) {
         } finally {
-            virtualDisplay?.release()
-            mediaProjection?.stop()
+            runCatching { virtualDisplay?.release() }
+            runCatching { mediaProjection?.stop() }
             mediaRecorder = null
             virtualDisplay = null
             mediaProjection = null
@@ -199,7 +214,7 @@ class ScreenRecordService : Service() {
                     isRecording = false,
                     isPaused = false,
                     activeFilePath = saved,
-                    message = if (saved != null) "Grabación guardada" else "Grabación finalizada",
+                    message = if (saved != null) message else "Grabación finalizada",
                 )
             }
             stopForeground(STOP_FOREGROUND_REMOVE)

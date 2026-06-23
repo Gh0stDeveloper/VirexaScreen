@@ -19,28 +19,16 @@ android {
         }
     }
 
-    val releaseKeystorePath = System.getenv("KEYSTORE_FILE") ?: "app/ghostnexora-release.jks"
-
-    signingConfigs {
-        create("release") {
-            storeFile = file(releaseKeystorePath)
-            storePassword = System.getenv("KEYSTORE_PASSWORD")
-            keyAlias = System.getenv("KEY_ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
-            isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
-    
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

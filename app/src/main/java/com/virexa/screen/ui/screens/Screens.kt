@@ -92,7 +92,7 @@ fun SplashScreen(onDone: () -> Unit) {
                 BrandMark(modifier = Modifier.size(92.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Virexa Screen", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    Text("Tu grabador profesional", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Grabación limpia. Controles rápidos. Diseño minimalista.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)) {
                     Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -305,11 +305,26 @@ fun HomeScreen(
                 SecondaryActionButton(text = "Ajustes", enabled = true, onClick = onOpenSettings, modifier = Modifier.weight(1f))
             }
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                SecondaryActionButton(
+                    text = "Ventana flotante",
+                    enabled = preferences.floatingBubbleEnabled,
+                    onClick = onEnableBubble,
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryActionButton(
+                    text = "Actualizar",
+                    enabled = true,
+                    onClick = onRefresh,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
             SectionCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Burbuja flotante", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text("Movible, compacta y menos invasiva. Se oculta durante la grabación activa.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Movible, compacta y menos invasiva. Abre su panel desde el botón de ventana flotante.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = onEnableBubble) { Text(if (preferences.floatingBubbleEnabled) "Gestionar" else "Activar") }
                 }

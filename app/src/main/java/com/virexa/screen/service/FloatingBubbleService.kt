@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +34,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
+import com.virexa.screen.ui.components.BubbleMiniLabel
 import com.virexa.screen.data.RecordingSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +200,7 @@ private fun BubbleSurface(
     onClose: () -> Unit,
 ) {
     val state by RecordingSession.uiState.collectAsState()
+    var expanded by remember { mutableStateOf(false) }
     MaterialTheme {
         Surface(
             shape = RoundedCornerShape(26.dp),
@@ -219,8 +225,13 @@ private fun BubbleSurface(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     BubbleIconChip(
+                        icon = Icons.Default.Settings,
+                        label = if (expanded) "Cerrar" else "Ventana",
+                        onClick = { expanded = !expanded },
+                    )
+                    BubbleIconChip(
                         icon = Icons.Default.PlayArrow,
-                        label = if (state.isRecording) "Abrir" else "Abrir",
+                        label = "Abrir",
                         onClick = onOpenApp,
                     )
                     BubbleIconChip(
@@ -238,6 +249,10 @@ private fun BubbleSurface(
                         label = "Cerrar",
                         onClick = onClose,
                     )
+                }
+
+                if (expanded) {
+                    BubbleMiniLabel(if (state.isRecording) "Panel flotante activo" else "Panel flotante listo")
                 }
 
                 if (state.isRecording) {

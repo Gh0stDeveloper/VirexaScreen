@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationCompat.MediaStyle
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.AudioMode
@@ -264,7 +265,10 @@ class ScreenRecordService : Service() {
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setContentIntent(openPendingIntent)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
             .addAction(pauseResumeIcon, pauseResumeLabel, pauseResumePendingIntent)
             .addAction(android.R.drawable.ic_delete, "Detener", stopPendingIntent)
             .build()

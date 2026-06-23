@@ -1,5 +1,8 @@
+
 package com.virexa.screen.data
 
+import android.net.Uri
+import java.io.File
 import java.util.UUID
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -128,7 +131,7 @@ data class UserPreferences(
     val defaultAudioMode: AudioMode = AudioMode.MICROPHONE,
     val floatingBubbleEnabled: Boolean = true,
     val showQuickControls: Boolean = true,
-    val outputFolderName: String = "VirexaScreen",
+    val outputFolderName: String = "VixeraScreen",
     val onboardingCompleted: Boolean = false,
 )
 
@@ -143,6 +146,8 @@ data class RecordingFile(
     val audioMode: AudioMode,
 ) {
     val displayName: String get() = fileName.removeSuffix(".mp4")
+    val isContentUri: Boolean get() = filePath.startsWith("content://")
+    val mediaUri: Uri get() = if (isContentUri) Uri.parse(filePath) else Uri.fromFile(File(filePath))
 }
 
 data class RecordingUiState(

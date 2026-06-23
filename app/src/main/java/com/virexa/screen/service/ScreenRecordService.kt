@@ -1,3 +1,4 @@
+
 package com.virexa.screen.service
 
 import android.app.Activity
@@ -5,19 +6,23 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import androidx.core.app.NotificationCompat
-import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.core.app.ServiceCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.AudioMode
 import com.virexa.screen.data.RecordingRepository
@@ -31,6 +36,8 @@ class ScreenRecordService : Service() {
         const val ACTION_PAUSE = "com.virexa.screen.action.PAUSE"
         const val ACTION_RESUME = "com.virexa.screen.action.RESUME"
         const val ACTION_STOP = "com.virexa.screen.action.STOP"
+        const val ACTION_NEW = "com.virexa.screen.action.NEW"
+        const val ACTION_CLOSE_BUBBLE = FloatingBubbleService.ACTION_CLOSE
 
         const val EXTRA_RESULT_CODE = "extra_result_code"
         const val EXTRA_DATA = "extra_data"
@@ -48,6 +55,8 @@ class ScreenRecordService : Service() {
     private var mediaRecorder: MediaRecorder? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var outputFile: File? = null
+    private var outputUri: Uri? = null
+    private var outputPfd: ParcelFileDescriptor? = null
     private var started = false
     private var currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
 
@@ -66,6 +75,8 @@ class ScreenRecordService : Service() {
             ACTION_PAUSE -> pauseCapture()
             ACTION_RESUME -> resumeCapture()
             ACTION_STOP -> stopCapture()
+            ACTION_NEW -> openApp()
+            ACTION_CLOSE_BUBBLE -> closeBubble()
         }
         return START_STICKY
     }
@@ -103,8 +114,12 @@ class ScreenRecordService : Service() {
             mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, projectionData)
                 ?: throw IllegalStateException("No se pudo obtener MediaProjection")
             mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
-            val outputFolder = intent.getStringExtra(EXTRA_OUTPUT_FOLDER) ?: "VirexaScreen"
-            outputFile = recorderRepository.outputFileForNewRecording(outputFolder)
+
+            val outputFolder = intent.getStringExtra(EXTRA_OUTPUT_FOLDER) ?: "VixeraScreen"
+            val destination = recorderRepository.createRecordingDestination(outputFolder)
+            outputFile = destination.file
+            outputUri = destination.uri
+            outputPfd = destination.parcelFileDescriptor
 
             mediaRecorder = MediaRecorder().apply {
                 if (audioMode.usesMicrophone) {
@@ -121,7 +136,11 @@ class ScreenRecordService : Service() {
                 setVideoSize(width, height)
                 setVideoFrameRate(fps)
                 setVideoEncodingBitRate(bitrate)
-                setOutputFile(outputFile!!.absolutePath)
+                if (outputPfd != null) {
+                    setOutputFile(outputPfd!!.fileDescriptor)
+                } else {
+                    setOutputFile(outputFile!!.absolutePath)
+                }
                 prepare()
             }
 
@@ -142,7 +161,7 @@ class ScreenRecordService : Service() {
                 it.copy(
                     isRecording = true,
                     isPaused = false,
-                    activeFilePath = outputFile?.absolutePath,
+                    activeFilePath = destination.displayPath,
                     message = if (audioMode.requestsSystemAudio) "Grabación iniciada. Audio interno sujeto al sistema." else "Grabación iniciada",
                 )
             }
@@ -153,6 +172,7 @@ class ScreenRecordService : Service() {
                 currentForegroundType,
             )
         } catch (t: Throwable) {
+            cleanupOutput(shouldDelete = true)
             RecordingSession.update { it.copy(isRecording = false, isPaused = false, message = "No se pudo iniciar: ${t.message}") }
             stopSelf()
         }
@@ -195,13 +215,15 @@ class ScreenRecordService : Service() {
     private fun handleProjectionStopped(message: String) {
         runCatching { mediaProjection?.unregisterCallback(projectionCallback) }
 
+        var stopError: Throwable? = null
         try {
             mediaRecorder?.apply {
                 stop()
                 reset()
                 release()
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            stopError = t
         } finally {
             runCatching { virtualDisplay?.release() }
             runCatching { mediaProjection?.stop() }
@@ -209,7 +231,8 @@ class ScreenRecordService : Service() {
             virtualDisplay = null
             mediaProjection = null
             started = false
-            val saved = outputFile?.absolutePath
+            val saved = outputUri?.toString() ?: outputFile?.absolutePath
+            cleanupOutput(shouldDelete = stopError != null)
             RecordingSession.update {
                 it.copy(
                     isRecording = false,
@@ -223,6 +246,28 @@ class ScreenRecordService : Service() {
         }
     }
 
+    private fun cleanupOutput(shouldDelete: Boolean) {
+        val uri = outputUri
+        val pfd = outputPfd
+        val file = outputFile
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uri != null) {
+            runCatching {
+                val values = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                if (shouldDelete) {
+                    contentResolver.delete(uri, null, null)
+                } else {
+                    contentResolver.update(uri, values, null, null)
+                }
+            }
+        } else if (shouldDelete) {
+            runCatching { file?.delete() }
+        }
+        runCatching { pfd?.close() }
+        outputFile = null
+        outputUri = null
+        outputPfd = null
+    }
+
     private fun updateNotification(paused: Boolean) {
         val current = if (paused) "Grabación en pausa" else "Grabando pantalla"
         ServiceCompat.startForeground(
@@ -234,7 +279,9 @@ class ScreenRecordService : Service() {
     }
 
     private fun buildNotification(text: String, isPaused: Boolean): Notification {
-        val openIntent = Intent(this, MainActivity::class.java)
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
         val openPendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -243,7 +290,7 @@ class ScreenRecordService : Service() {
         )
 
         val pauseResumeAction = if (isPaused) ACTION_RESUME else ACTION_PAUSE
-        val pauseResumeLabel = if (isPaused) "Seguir" else "Pausar"
+        val pauseResumeLabel = if (isPaused) "Reanudar" else "Pausar"
         val pauseResumeIcon = if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
 
         val pauseResumePendingIntent = PendingIntent.getService(
@@ -258,6 +305,18 @@ class ScreenRecordService : Service() {
             Intent(this, ScreenRecordService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        val newPendingIntent = PendingIntent.getService(
+            this,
+            3,
+            Intent(this, ScreenRecordService::class.java).apply { action = ACTION_NEW },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val closeBubblePendingIntent = PendingIntent.getService(
+            this,
+            4,
+            Intent(this, FloatingBubbleService::class.java).apply { action = FloatingBubbleService.ACTION_CLOSE },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 
         return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID)
             .setContentTitle("Virexa Screen")
@@ -267,11 +326,22 @@ class ScreenRecordService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
+            .setStyle(MediaStyle().setShowActionsInCompactView(0, 1, 2))
             .addAction(pauseResumeIcon, pauseResumeLabel, pauseResumePendingIntent)
             .addAction(android.R.drawable.ic_delete, "Detener", stopPendingIntent)
+            .addAction(android.R.drawable.ic_menu_add, "Nueva", newPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cerrar", closeBubblePendingIntent)
             .build()
+    }
+
+    private fun openApp() {
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private fun closeBubble() {
+        stopService(Intent(this, FloatingBubbleService::class.java))
     }
 
     override fun onDestroy() {
@@ -279,5 +349,6 @@ class ScreenRecordService : Service() {
         runCatching { mediaRecorder?.release() }
         runCatching { virtualDisplay?.release() }
         runCatching { mediaProjection?.stop() }
+        runCatching { outputPfd?.close() }
     }
 }

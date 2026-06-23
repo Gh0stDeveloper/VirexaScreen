@@ -59,6 +59,7 @@ import com.virexa.screen.data.LanguageOption
 import com.virexa.screen.data.QualityOption
 import com.virexa.screen.data.RecordingFile
 import com.virexa.screen.data.RecordingUiState
+import com.virexa.screen.data.mediaUri
 import com.virexa.screen.data.ThemeMode
 import com.virexa.screen.data.UserPreferences
 import com.virexa.screen.ui.components.AudioModeCard
@@ -397,7 +398,7 @@ fun RecordingDetailScreen(
     val context = LocalContext.current
     val player = remember(recording.filePath) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(File(recording.filePath))))
+            setMediaItem(MediaItem.fromUri(recording.mediaUri))
             prepare()
             playWhenReady = false
         }
@@ -447,11 +448,9 @@ fun RecordingDetailScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     SecondaryActionButton(text = "Renombrar", enabled = renameValue.isNotBlank(), onClick = { onRename(renameValue) }, modifier = Modifier.weight(1f))
                     val shareIntent = remember(recording.filePath) {
-                        val file = File(recording.filePath)
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                         Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
-                            putExtra(Intent.EXTRA_STREAM, uri)
+                            putExtra(Intent.EXTRA_STREAM, if (recording.isContentUri) recording.mediaUri else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(recording.filePath)))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                     }

@@ -1,3 +1,4 @@
+
 package com.virexa.screen.service
 
 import android.app.NotificationChannel
@@ -12,7 +13,8 @@ object NotificationHelper {
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW)
+        val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
+        channel.description = "Controles de grabación y burbuja flotante"
         manager.createNotificationChannel(channel)
     }
 }

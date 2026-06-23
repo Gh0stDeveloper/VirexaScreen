@@ -33,7 +33,7 @@ class PreferencesRepository(private val context: Context) {
             defaultAudioMode = runCatching { AudioMode.valueOf(prefs[Keys.defaultAudioMode] ?: AudioMode.MICROPHONE.name) }.getOrDefault(AudioMode.MICROPHONE),
             floatingBubbleEnabled = prefs[Keys.floatingBubbleEnabled] ?: true,
             showQuickControls = prefs[Keys.showQuickControls] ?: true,
-            outputFolderName = prefs[Keys.outputFolderName] ?: "VirexaScreen",
+            outputFolderName = prefs[Keys.outputFolderName] ?: "VixeraScreen",
             onboardingCompleted = prefs[Keys.onboardingCompleted] ?: false,
         )
     }
@@ -45,6 +45,6 @@ class PreferencesRepository(private val context: Context) {
     suspend fun updateDefaultAudioMode(value: AudioMode) = context.dataStore.edit { it[Keys.defaultAudioMode] = value.name }
     suspend fun updateFloatingBubbleEnabled(value: Boolean) = context.dataStore.edit { it[Keys.floatingBubbleEnabled] = value }
     suspend fun updateShowQuickControls(value: Boolean) = context.dataStore.edit { it[Keys.showQuickControls] = value }
-    suspend fun updateOutputFolderName(value: String) = context.dataStore.edit { it[Keys.outputFolderName] = value.ifBlank { "VirexaScreen" } }
+    suspend fun updateOutputFolderName(value: String) = context.dataStore.edit { it[Keys.outputFolderName] = value.ifBlank { "VixeraScreen" } }
     suspend fun markOnboardingCompleted() = context.dataStore.edit { it[Keys.onboardingCompleted] = true }
 }

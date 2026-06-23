@@ -1,3 +1,4 @@
+
 package com.virexa.screen.service
 
 import android.app.Notification
@@ -33,58 +34,57 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
-import com.virexa.screen.ui.components.BubbleMiniLabel
 import com.virexa.screen.data.RecordingSession
+import com.virexa.screen.ui.components.BubbleMiniLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class FloatingBubbleService : Service() {
 
+    companion object {
+        const val ACTION_CLOSE = "com.virexa.screen.action.CLOSE_BUBBLE"
+        const val ACTION_OPEN_PANEL = "com.virexa.screen.action.OPEN_PANEL"
+    }
+
     private lateinit var windowManager: WindowManager
     private var bubbleView: ComposeView? = null
     private var params: WindowManager.LayoutParams? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var visibilityJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationHelper.ensureChannel(this)
-        ServiceCompat.startForeground(this, 2, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        showBubble()
-        observeRecordingState()
-        return START_STICKY
-    }
-
-    private fun observeRecordingState() {
-        if (visibilityJob != null) return
-        visibilityJob = serviceScope.launch {
-            RecordingSession.uiState.collectLatest { state ->
-                bubbleView?.visibility = if (state.isRecording && !state.isPaused) View.GONE else View.VISIBLE
-                bubbleView?.alpha = if (state.isRecording && !state.isPaused) 0f else 1f
-            }
+        if (intent?.action == ACTION_CLOSE) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return runCatching {
+            ServiceCompat.startForeground(this, 2, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            showBubble()
+            START_STICKY
+        }.getOrElse {
+            RecordingSession.setMessage("No se pudo abrir la ventana flotante: ${it.message}")
+            stopSelf()
+            START_NOT_STICKY
         }
     }
 
@@ -101,6 +101,7 @@ class FloatingBubbleService : Service() {
                     onPause = { sendRecordAction(ScreenRecordService.ACTION_PAUSE) },
                     onResume = { sendRecordAction(ScreenRecordService.ACTION_RESUME) },
                     onStop = { sendRecordAction(ScreenRecordService.ACTION_STOP) },
+                    onNew = { sendRecordAction(ScreenRecordService.ACTION_NEW) },
                     onClose = { stopSelf() },
                 )
             }
@@ -152,7 +153,11 @@ class FloatingBubbleService : Service() {
         })
 
         bubbleView = view
-        windowManager.addView(view, params)
+        runCatching { windowManager.addView(view, params) }
+            .onFailure {
+                bubbleView = null
+                throw it
+            }
     }
 
     private fun openApp() {
@@ -165,9 +170,9 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        visibilityJob?.cancel()
-        visibilityJob = null
-        bubbleView?.let { runCatching { windowManager.removeView(it) } }
+        bubbleView?.let { view ->
+            runCatching { windowManager.removeView(view) }
+        }
         bubbleView = null
     }
 
@@ -182,7 +187,7 @@ class FloatingBubbleService : Service() {
 
         return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID)
             .setContentTitle("Virexa Screen")
-            .setContentText("Burbuja flotante activa")
+            .setContentText("Ventana flotante activa")
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setContentIntent(openPendingIntent)
             .setOngoing(true)
@@ -197,6 +202,7 @@ private fun BubbleSurface(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
+    onNew: () -> Unit,
     onClose: () -> Unit,
 ) {
     val state by RecordingSession.uiState.collectAsState()
@@ -226,12 +232,12 @@ private fun BubbleSurface(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     BubbleIconChip(
                         icon = Icons.Default.Settings,
-                        label = if (expanded) "Cerrar" else "Ventana",
+                        label = if (expanded) "Cerrar panel" else "Panel",
                         onClick = { expanded = !expanded },
                     )
                     BubbleIconChip(
                         icon = Icons.Default.PlayArrow,
-                        label = "Abrir",
+                        label = "Abrir app",
                         onClick = onOpenApp,
                     )
                     BubbleIconChip(
@@ -241,7 +247,7 @@ private fun BubbleSurface(
                     )
                     BubbleIconChip(
                         icon = Icons.Default.Stop,
-                        label = "Stop",
+                        label = "Detener",
                         onClick = onStop,
                     )
                     BubbleIconChip(
@@ -253,6 +259,11 @@ private fun BubbleSurface(
 
                 if (expanded) {
                     BubbleMiniLabel(if (state.isRecording) "Panel flotante activo" else "Panel flotante listo")
+                    BubbleIconChip(
+                        icon = Icons.Default.PlayArrow,
+                        label = "Nueva",
+                        onClick = onNew,
+                    )
                 }
 
                 if (state.isRecording) {

@@ -59,7 +59,6 @@ import com.virexa.screen.data.LanguageOption
 import com.virexa.screen.data.QualityOption
 import com.virexa.screen.data.RecordingFile
 import com.virexa.screen.data.RecordingUiState
-import com.virexa.screen.data.mediaUri
 import com.virexa.screen.data.ThemeMode
 import com.virexa.screen.data.UserPreferences
 import com.virexa.screen.ui.components.AudioModeCard

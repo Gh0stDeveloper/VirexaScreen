@@ -449,7 +449,7 @@ fun RecordingDetailScreen(
                     val shareIntent = remember(recording.filePath) {
                         Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
-                            putExtra(Intent.EXTRA_STREAM, if (recording.isContentUri) recording.filePath else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(recording.filePath)))
+                            putExtra(Intent.EXTRA_STREAM, recording.mediaUri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                     }

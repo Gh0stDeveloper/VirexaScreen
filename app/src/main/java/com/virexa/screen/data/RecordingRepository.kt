@@ -81,7 +81,7 @@ class RecordingRepository(private val context: Context) {
 
     fun renameRecording(file: RecordingFile, newBaseName: String): RecordingFile? {
         val safeName = newBaseName.trim().ifBlank { file.displayName }
-            .replace(Regex("[^a-zA-Z0-9_\- ]"), "_")
+            .replace(Regex("[^a-zA-Z0-9_\\- ]"), "_")
         return if (file.isContentUri) {
             val uri = Uri.parse(file.filePath)
             val values = ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, "$safeName.mp4") }

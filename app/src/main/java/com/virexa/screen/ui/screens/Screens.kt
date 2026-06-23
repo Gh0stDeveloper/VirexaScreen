@@ -398,7 +398,7 @@ fun RecordingDetailScreen(
     val context = LocalContext.current
     val player = remember(recording.filePath) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(recording.mediaUri))
+            setMediaItem(MediaItem.fromUri(recording.filePath))
             prepare()
             playWhenReady = false
         }
@@ -450,7 +450,7 @@ fun RecordingDetailScreen(
                     val shareIntent = remember(recording.filePath) {
                         Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
-                            putExtra(Intent.EXTRA_STREAM, if (recording.isContentUri) recording.mediaUri else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(recording.filePath)))
+                            putExtra(Intent.EXTRA_STREAM, if (recording.isContentUri) recording.filePath else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(recording.filePath)))
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
                     }

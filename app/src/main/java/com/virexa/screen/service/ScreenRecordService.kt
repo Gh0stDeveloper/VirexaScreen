@@ -16,7 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationCompat.MediaStyle
+import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.AudioMode

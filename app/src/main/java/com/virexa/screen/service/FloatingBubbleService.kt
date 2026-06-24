@@ -43,7 +43,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
-import com.virexa.screen.ui.Theme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -250,7 +250,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     override fun onDestroy() {
-        savedStateRegistryController.performSave()
+        savedStateRegistryController.performSave(Bundle()) // Se pasa un Bundle vacío, obligatorio
         super.onDestroy()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null

@@ -17,7 +17,6 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -31,9 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
@@ -47,9 +44,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewTreeLifecycleOwner
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -62,17 +56,30 @@ class FloatingBubbleService : LifecycleService() {
 
         fun start(context: Context): Boolean {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
             ) {
                 RecordingSession.setMessage("Activa notificaciones para mostrar la ventana flotante")
                 return false
             }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
                 RecordingSession.setMessage("Concede permiso de superposición para mostrar la ventana flotante")
                 return false
             }
-            runCatching { ContextCompat.startForegroundService(context, Intent(context, FloatingBubbleService::class.java)) }
-                .onFailure { RecordingSession.setMessage("No se pudo iniciar la ventana flotante: ${it.message}") }
+
+            runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, FloatingBubbleService::class.java)
+                )
+            }.onFailure {
+                RecordingSession.setMessage("No se pudo iniciar la ventana flotante: ${it.message}")
+                return false
+            }
+
             return true
         }
 
@@ -84,19 +91,22 @@ class FloatingBubbleService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private var bubbleView: ComposeView? = null
     private var params: WindowManager.LayoutParams? = null
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    override fun onBind(intent: Intent): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationHelper.ensureChannels(this)
+
         if (intent?.action == ACTION_CLOSE) {
             stopSelf()
             return START_NOT_STICKY
         }
+
         return runCatching {
             ServiceCompat.startForeground(
-                this, 2, buildNotification(),
+                this,
+                2,
+                buildNotification(),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
             showBubble()
@@ -110,11 +120,15 @@ class FloatingBubbleService : LifecycleService() {
 
     private fun showBubble() {
         if (bubbleView != null) return
+
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
 
         params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -145,10 +159,11 @@ class FloatingBubbleService : LifecycleService() {
             }
         }
 
-        // Touch listener that distinguishes drag vs click
         view.setOnTouchListener(object : View.OnTouchListener {
-            private var initX = 0; private var initY = 0
-            private var initTouchX = 0f; private var initTouchY = 0f
+            private var initX = 0
+            private var initY = 0
+            private var initTouchX = 0f
+            private var initTouchY = 0f
             private var isDragging = false
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
@@ -159,25 +174,36 @@ class FloatingBubbleService : LifecycleService() {
                         initTouchX = event.rawX
                         initTouchY = event.rawY
                         isDragging = false
-                        // Don't consume — let children handle clicks
                         false
                     }
+
                     MotionEvent.ACTION_MOVE -> {
                         val dx = event.rawX - initTouchX
                         val dy = event.rawY - initTouchY
+
                         if (!isDragging && (abs(dx) > CLICK_THRESHOLD_PX || abs(dy) > CLICK_THRESHOLD_PX)) {
                             isDragging = true
                         }
+
                         if (isDragging) {
                             params?.x = (initX + dx).roundToInt()
                             params?.y = (initY + dy).roundToInt()
                             runCatching { windowManager.updateViewLayout(view, params) }
                             true
-                        } else false
+                        } else {
+                            false
+                        }
                     }
+
                     MotionEvent.ACTION_UP -> {
-                        if (isDragging) { isDragging = false; true } else false
+                        if (isDragging) {
+                            isDragging = false
+                            true
+                        } else {
+                            false
+                        }
                     }
+
                     else -> false
                 }
             }
@@ -185,7 +211,8 @@ class FloatingBubbleService : LifecycleService() {
 
         bubbleView = view
         runCatching { windowManager.addView(view, params) }.onFailure {
-            bubbleView = null; throw it
+            bubbleView = null
+            throw it
         }
     }
 
@@ -193,10 +220,16 @@ class FloatingBubbleService : LifecycleService() {
         runCatching {
             startActivity(
                 Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
                 }
             )
-        }.onFailure { RecordingSession.setMessage("No se pudo abrir la app: ${it.message}") }
+        }.onFailure {
+            RecordingSession.setMessage("No se pudo abrir la app: ${it.message}")
+        }
     }
 
     private fun sendRecordAction(action: String) {
@@ -211,15 +244,19 @@ class FloatingBubbleService : LifecycleService() {
 
     private fun buildNotification(): Notification {
         val openPi = PendingIntent.getActivity(
-            this, 0,
+            this,
+            0,
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+
         val closePi = PendingIntent.getService(
-            this, 10,
+            this,
+            10,
             Intent(this, FloatingBubbleService::class.java).apply { action = ACTION_CLOSE },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+
         return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_BUBBLE_ID)
             .setContentTitle("Virexa Screen")
             .setContentText("Ventana flotante activa")
@@ -231,8 +268,6 @@ class FloatingBubbleService : LifecycleService() {
             .build()
     }
 }
-
-// ─── Composable UI ────────────────────────────────────────────────────────────
 
 @Composable
 private fun BubbleRoot(
@@ -249,7 +284,6 @@ private fun BubbleRoot(
     val isRecording = state.isRecording
     val isPaused = state.isPaused
 
-    // Accent color based on recording state
     val accentColor by animateColorAsState(
         targetValue = when {
             isRecording && !isPaused -> Color(0xFFE53935)
@@ -275,14 +309,11 @@ private fun BubbleRoot(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-
-                // ── Header row ──────────────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    // Recording dot + label
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -303,7 +334,7 @@ private fun BubbleRoot(
                             color = accentColor,
                         )
                     }
-                    // Expand / collapse
+
                     IconButton(
                         onClick = { expanded = !expanded },
                         modifier = Modifier.size(28.dp),
@@ -316,7 +347,6 @@ private fun BubbleRoot(
                     }
                 }
 
-                // ── Timer (only while recording) ────────────────────────────
                 AnimatedVisibility(visible = isRecording) {
                     Text(
                         text = formatElapsed(state.elapsedMs),
@@ -329,7 +359,6 @@ private fun BubbleRoot(
                     )
                 }
 
-                // ── Action row ───────────────────────────────────────────────
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -355,6 +384,7 @@ private fun BubbleRoot(
                             onClick = onNew,
                         )
                     }
+
                     BubbleBtn(
                         icon = Icons.Default.OpenInNew,
                         label = "Abrir",
@@ -369,7 +399,6 @@ private fun BubbleRoot(
                     )
                 }
 
-                // ── Expanded panel ───────────────────────────────────────────
                 AnimatedVisibility(
                     visible = expanded,
                     enter = expandVertically() + fadeIn(),

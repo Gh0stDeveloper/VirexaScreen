@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.provider.Settings
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -88,6 +89,10 @@ class FloatingBubbleService : Service() {
         if (bubbleView != null) return
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            throw IllegalStateException("Se requiere permiso de superposición")
+        }
+
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
@@ -165,7 +170,7 @@ class FloatingBubbleService : Service() {
     }
 
     private fun openApp() {
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
     private fun sendRecordAction(action: String) {

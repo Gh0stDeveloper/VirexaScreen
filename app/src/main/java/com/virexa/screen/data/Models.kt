@@ -8,7 +8,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class LanguageOption(val label: String) {
     SPANISH("Español"),
-    ENGLISH("English");
+    ENGLISH("English"),
 }
 
 enum class VideoEncoder(val label: String, val codecName: String) {
@@ -21,6 +21,19 @@ enum class BitrateMode(val label: String) {
     CUSTOM("Personalizado"),
 }
 
+enum class CountdownOption(val label: String, val seconds: Int) {
+    NONE("Sin cuenta", 0),
+    THREE("3 segundos", 3),
+    FIVE("5 segundos", 5),
+    TEN("10 segundos", 10),
+}
+
+enum class MicBoostLevel(val label: String, val gain: Float) {
+    NORMAL("Normal", 1.0f),
+    MEDIUM("Medio", 1.5f),
+    HIGH("Alto", 2.0f),
+}
+
 enum class AudioMode(
     val label: String,
     val description: String,
@@ -28,41 +41,11 @@ enum class AudioMode(
     val requestsSystemAudio: Boolean,
     val requestsCallAudio: Boolean,
 ) {
-    NONE(
-        label = "Sin audio",
-        description = "Solo captura de pantalla, sin micrófono ni audio interno.",
-        usesMicrophone = false,
-        requestsSystemAudio = false,
-        requestsCallAudio = false,
-    ),
-    MICROPHONE(
-        label = "Micrófono",
-        description = "Graba tu voz o el ambiente con el micrófono del dispositivo.",
-        usesMicrophone = true,
-        requestsSystemAudio = false,
-        requestsCallAudio = false,
-    ),
-    SYSTEM(
-        label = "Audio del sistema",
-        description = "Captura el audio reproducido por aplicaciones compatibles. Puede estar limitado por el sistema.",
-        usesMicrophone = false,
-        requestsSystemAudio = true,
-        requestsCallAudio = false,
-    ),
-    MIXED(
-        label = "Micrófono + sistema",
-        description = "Combina tu voz con el audio interno cuando el dispositivo lo permite.",
-        usesMicrophone = true,
-        requestsSystemAudio = true,
-        requestsCallAudio = false,
-    ),
-    CALLS(
-        label = "Llamadas / apps de voz",
-        description = "Intenta capturar audio de llamadas o apps de voz solo en dispositivos compatibles y con las restricciones del sistema.",
-        usesMicrophone = true,
-        requestsSystemAudio = false,
-        requestsCallAudio = true,
-    );
+    NONE("Sin audio", "Solo captura de pantalla, sin micrófono ni audio interno.", false, false, false),
+    MICROPHONE("Micrófono", "Graba tu voz o el ambiente con el micrófono del dispositivo.", true, false, false),
+    SYSTEM("Audio del sistema", "Captura el audio reproducido por aplicaciones compatibles.", false, true, false),
+    MIXED("Micrófono + sistema", "Combina tu voz con el audio interno cuando el dispositivo lo permite.", true, true, false),
+    CALLS("Llamadas / apps de voz", "Intenta capturar audio de llamadas o apps de voz en dispositivos compatibles.", true, false, true),
 }
 
 data class QualityOption(
@@ -81,52 +64,11 @@ data class QualityOption(
 
     companion object {
         val presets = listOf(
-            QualityOption(
-                id = "720p",
-                label = "HD",
-                resolutionLabel = "1280 × 720",
-                width = 1280,
-                height = 720,
-                aspectRatio = "16:9",
-                suggestedBitrate = "3–5 Mbps",
-                estimatedSizePerMinute = "20–35 MB",
-                batteryImpact = "Bajo",
-            ),
-            QualityOption(
-                id = "1080p",
-                label = "Full HD",
-                resolutionLabel = "1920 × 1080",
-                width = 1920,
-                height = 1080,
-                aspectRatio = "16:9",
-                suggestedBitrate = "6–10 Mbps",
-                estimatedSizePerMinute = "45–75 MB",
-                batteryImpact = "Medio",
-            ),
-            QualityOption(
-                id = "1440p",
-                label = "2K / QHD",
-                resolutionLabel = "2560 × 1440",
-                width = 2560,
-                height = 1440,
-                aspectRatio = "16:9",
-                suggestedBitrate = "12–18 Mbps",
-                estimatedSizePerMinute = "90–140 MB",
-                batteryImpact = "Alto",
-            ),
-            QualityOption(
-                id = "2160p",
-                label = "4K",
-                resolutionLabel = "3840 × 2160",
-                width = 3840,
-                height = 2160,
-                aspectRatio = "16:9",
-                suggestedBitrate = "20–35 Mbps",
-                estimatedSizePerMinute = "150–260 MB",
-                batteryImpact = "Muy alto",
-            ),
+            QualityOption("720p", "HD", "1280 × 720", 1280, 720, "16:9", "3–5 Mbps", "20–35 MB", "Bajo"),
+            QualityOption("1080p", "Full HD", "1920 × 1080", 1920, 1080, "16:9", "6–10 Mbps", "45–75 MB", "Medio"),
+            QualityOption("1440p", "2K / QHD", "2560 × 1440", 2560, 1440, "16:9", "12–18 Mbps", "90–140 MB", "Alto"),
+            QualityOption("2160p", "4K", "3840 × 2160", 3840, 2160, "16:9", "20–35 Mbps", "150–260 MB", "Muy alto"),
         )
-
         fun default() = presets[1]
         fun fromId(id: String?) = presets.firstOrNull { it.id == id } ?: default()
     }
@@ -142,15 +84,31 @@ data class UserPreferences(
     val showQuickControls: Boolean = true,
     val outputFolderName: String = "VirexaScreen",
     val onboardingCompleted: Boolean = false,
-    // Ajustes avanzados
+    // Advanced video
     val videoEncoder: VideoEncoder = VideoEncoder.H264,
     val bitrateMode: BitrateMode = BitrateMode.AUTO,
     val customBitrateMbps: Int = 8,
     val frameRate: Int = 60,
+    // Advanced behavior
     val showTimerOnBubble: Boolean = true,
     val autoPauseOnCall: Boolean = false,
     val keepScreenOn: Boolean = true,
     val showTouchIndicator: Boolean = false,
+    // Grabación - nuevos
+    val countdownOption: CountdownOption = CountdownOption.THREE,
+    val maxDurationMinutes: Int = 0,          // 0 = sin límite
+    val watermarkText: String = "",            // vacío = sin marca de agua
+    val watermarkEnabled: Boolean = false,
+    // Audio avanzado
+    val micBoostLevel: MicBoostLevel = MicBoostLevel.NORMAL,
+    val noiseSuppression: Boolean = false,
+    val silenceAutoPause: Boolean = false,
+    val silenceThresholdSeconds: Int = 10,
+    // UX / accesibilidad
+    val doNotDisturbDuringRecording: Boolean = false,
+    val hapticFeedback: Boolean = true,
+    val autoShareAfterStop: Boolean = false,
+    val quickShareTarget: String = "",          // package name del app destino
 )
 
 data class RecordingFile(
@@ -174,4 +132,17 @@ data class RecordingUiState(
     val activeFilePath: String? = null,
     val message: String? = null,
     val elapsedMs: Long = 0L,
+    val countdown: Int = 0,               // 0 = no countdown activo
+    val silenceDetected: Boolean = false,
+)
+
+data class RecordingStats(
+    val totalRecordings: Int = 0,
+    val totalDurationMs: Long = 0L,
+    val totalSizeBytes: Long = 0L,
+    val longestDurationMs: Long = 0L,
+    val largestSizeBytes: Long = 0L,
+    val averageDurationMs: Long = 0L,
+    val thisWeekCount: Int = 0,
+    val thisMonthCount: Int = 0,
 )

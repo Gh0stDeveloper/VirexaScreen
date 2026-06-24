@@ -29,6 +29,7 @@ sealed class Dest(val route: String) {
     data object Onboarding : Dest("onboarding")
     data object Home : Dest("home")
     data object Library : Dest("library")
+    data object Stats : Dest("stats")
     data object Settings : Dest("settings")
     data object AdvancedSettings : Dest("advanced_settings")
     data object Detail : Dest("detail/{path}") {
@@ -42,6 +43,8 @@ fun AppNavGraph(viewModel: AppViewModel) {
     val prefs by viewModel.preferences.collectAsState()
     val recordingState by viewModel.recordingUiState.collectAsState()
     val recordings by viewModel.recordings.collectAsState()
+    val stats by viewModel.stats.collectAsState()
+    val countdown by viewModel.countdown.collectAsState()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in setOf(Dest.Home.route, Dest.Library.route, Dest.Settings.route)
@@ -54,7 +57,6 @@ fun AppNavGraph(viewModel: AppViewModel) {
                 startDestination = Dest.Splash.route,
                 modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) 108.dp else 0.dp),
             ) {
-                // ── Splash
                 composable(Dest.Splash.route) {
                     SplashScreen {
                         navController.navigate(if (prefs.onboardingCompleted) Dest.Home.route else Dest.Onboarding.route) {
@@ -63,14 +65,10 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     }
                 }
 
-                // ── Onboarding
                 composable(Dest.Onboarding.route) {
                     OnboardingScreen(
                         preferences = prefs,
-                        onFinish = {
-                            viewModel.completeOnboarding()
-                            navController.navigate(Dest.Home.route) { popUpTo(Dest.Onboarding.route) { inclusive = true } }
-                        },
+                        onFinish = { viewModel.completeOnboarding(); navController.navigate(Dest.Home.route) { popUpTo(Dest.Onboarding.route) { inclusive = true } } },
                         onUpdateName = viewModel::updateProfileName,
                         onUpdateLanguage = viewModel::updateLanguage,
                         onUpdateTheme = viewModel::updateThemeMode,
@@ -80,45 +78,42 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     )
                 }
 
-                // ── Home
                 composable(Dest.Home.route) {
-                    var waitingForMicPermission by remember { mutableStateOf(false) }
-                    var pendingCaptureIntent by remember { mutableStateOf<Intent?>(null) }
+                    var pendingResultCode by remember { mutableIntStateOf(Activity.RESULT_CANCELED) }
+                    var pendingData by remember { mutableStateOf<Intent?>(null) }
+                    var waitingForMic by remember { mutableStateOf(false) }
 
                     val captureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                            viewModel.startRecording(
-                                permissionResultCode = result.resultCode,
-                                permissionData = result.data!!,
-                                quality = QualityOption.fromId(prefs.defaultQualityId),
-                                audioMode = prefs.defaultAudioMode,
-                            )
+                            pendingResultCode = result.resultCode
+                            pendingData = result.data
+                            viewModel.startRecordingWithCountdown(result.resultCode, result.data!!, QualityOption.fromId(prefs.defaultQualityId), prefs.defaultAudioMode)
                         }
-                        pendingCaptureIntent = null
-                        waitingForMicPermission = false
+                        waitingForMic = false
                     }
-                    val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        if (granted && waitingForMicPermission) pendingCaptureIntent?.let(captureLauncher::launch)
-                        waitingForMicPermission = false
+                    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        if (granted && waitingForMic && pendingData != null) {
+                            viewModel.startRecordingWithCountdown(pendingResultCode, pendingData!!, QualityOption.fromId(prefs.defaultQualityId), prefs.defaultAudioMode)
+                        }
+                        waitingForMic = false
                     }
-                    val overlayPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                    val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                         if (Settings.canDrawOverlays(context) && prefs.floatingBubbleEnabled) viewModel.startBubbleService()
                     }
 
                     HomeScreen(
                         preferences = prefs,
                         recordingState = recordingState,
+                        countdown = countdown,
+                        stats = stats,
                         onStartRecording = {
-                            val projectionManager = context.getSystemService(MediaProjectionManager::class.java)
-                            val captureIntent = projectionManager?.createScreenCaptureIntent()
-                            if (captureIntent != null) {
-                                if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                    waitingForMicPermission = true
-                                    pendingCaptureIntent = captureIntent
-                                    microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                } else {
-                                    captureLauncher.launch(captureIntent)
-                                }
+                            val pm = context.getSystemService(MediaProjectionManager::class.java)
+                            val captureIntent = pm?.createScreenCaptureIntent() ?: return@HomeScreen
+                            if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                waitingForMic = true
+                                micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            } else {
+                                captureLauncher.launch(captureIntent)
                             }
                         },
                         onStopRecording = viewModel::stopRecording,
@@ -128,13 +123,12 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onOpenSettings = { navController.navigate(Dest.Settings.route) },
                         onEnableBubble = {
                             if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
-                            else overlayPermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
+                            else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
                         },
                         onRefresh = viewModel::refreshRecordings,
                     )
                 }
 
-                // ── Library
                 composable(Dest.Library.route) {
                     LibraryScreen(
                         recordings = recordings,
@@ -142,10 +136,14 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onOpen = { navController.navigate(Dest.Detail.create(it.filePath)) },
                         onDelete = viewModel::deleteRecording,
                         onRefresh = viewModel::refreshRecordings,
+                        onOpenStats = { navController.navigate(Dest.Stats.route) },
                     )
                 }
 
-                // ── Settings
+                composable(Dest.Stats.route) {
+                    StatsScreen(stats = stats, recordings = recordings, onBack = { navController.popBackStack() })
+                }
+
                 composable(Dest.Settings.route) {
                     SettingsScreen(
                         preferences = prefs,
@@ -163,7 +161,6 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     )
                 }
 
-                // ── Advanced Settings
                 composable(Dest.AdvancedSettings.route) {
                     AdvancedSettingsScreen(
                         preferences = prefs,
@@ -176,33 +173,32 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onUpdateAutoPauseOnCall = viewModel::updateAutoPauseOnCall,
                         onUpdateKeepScreenOn = viewModel::updateKeepScreenOn,
                         onUpdateShowTouchIndicator = viewModel::updateShowTouchIndicator,
+                        onUpdateCountdown = viewModel::updateCountdownOption,
+                        onUpdateMaxDuration = viewModel::updateMaxDurationMinutes,
+                        onUpdateWatermarkEnabled = viewModel::updateWatermarkEnabled,
+                        onUpdateWatermarkText = viewModel::updateWatermarkText,
+                        onUpdateMicBoost = viewModel::updateMicBoostLevel,
+                        onUpdateNoiseSuppression = viewModel::updateNoiseSuppression,
+                        onUpdateSilenceAutoPause = viewModel::updateSilenceAutoPause,
+                        onUpdateSilenceThreshold = viewModel::updateSilenceThresholdSeconds,
+                        onUpdateDoNotDisturb = viewModel::updateDoNotDisturb,
+                        onUpdateHapticFeedback = viewModel::updateHapticFeedback,
+                        onUpdateAutoShare = viewModel::updateAutoShareAfterStop,
                     )
                 }
 
-                // ── Recording Detail
-                composable(
-                    route = Dest.Detail.route,
-                    arguments = listOf(navArgument("path") { type = NavType.StringType }),
-                ) { backStack ->
-                    val path = backStack.arguments?.getString("path").orEmpty()
+                composable(Dest.Detail.route, arguments = listOf(navArgument("path") { type = NavType.StringType })) { back ->
+                    val path = back.arguments?.getString("path").orEmpty()
                     val recording = recordings.firstOrNull { it.filePath == android.net.Uri.decode(path) }
                     if (recording != null) {
-                        RecordingDetailScreen(
-                            recording = recording,
-                            onBack = { navController.popBackStack() },
-                            onDelete = { viewModel.deleteRecording(recording); navController.popBackStack() },
-                            onRename = { newName -> viewModel.renameRecording(recording, newName) },
-                        )
+                        RecordingDetailScreen(recording = recording, onBack = { navController.popBackStack() }, onDelete = { viewModel.deleteRecording(recording); navController.popBackStack() }, onRename = { viewModel.renameRecording(recording, it) })
                     } else {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Grabación no encontrada") }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Grabación no encontrada") }
                     }
                 }
             }
 
-            AnimatedVisibility(
-                visible = showBottomBar,
-                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
+            AnimatedVisibility(visible = showBottomBar, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp)) {
                 BottomTabBar(
                     currentRoute = when (currentRoute) { Dest.Home.route -> "home"; Dest.Library.route -> "library"; Dest.Settings.route -> "settings"; else -> null },
                     onHome = { navController.navigate(Dest.Home.route) { popUpTo(Dest.Home.route) { inclusive = true }; launchSingleTop = true } },

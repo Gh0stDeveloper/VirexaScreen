@@ -135,7 +135,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(ScreenRecordService.EXTRA_NOISE_SUPPRESSION, p.noiseSuppression)
             putExtra(ScreenRecordService.EXTRA_MIC_BOOST, p.micBoostLevel.name)
             putExtra(ScreenRecordService.EXTRA_DND, p.doNotDisturbDuringRecording)
-            putExtra(ScreenRecordService.EXTRA_SHOW_BUBBLE, p.floatingBubbleEnabled)
+            putExtra(ScreenRecordService.EXTRA_AUTO_START_BUBBLE, p.floatingBubbleEnabled)
         }
         androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
         RecordingSession.update { it.copy(message = "Iniciando grabación…") }
@@ -146,12 +146,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun stopRecording() = sendAction(ScreenRecordService.ACTION_STOP)
 
     fun startBubbleService() {
-        val ctx = getApplication<Application>()
-        androidx.core.content.ContextCompat.startForegroundService(ctx, Intent(ctx, FloatingBubbleService::class.java))
+        FloatingBubbleService.start(getApplication())
     }
 
     fun stopBubbleService() {
-        getApplication<Application>().stopService(Intent(getApplication(), FloatingBubbleService::class.java))
+        FloatingBubbleService.stop(getApplication())
     }
 
     fun deleteRecording(file: RecordingFile) = viewModelScope.launch {

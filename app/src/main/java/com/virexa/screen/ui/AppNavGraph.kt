@@ -1,6 +1,7 @@
 package com.virexa.screen.ui
 
 import android.Manifest
+import android.os.Build
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -21,6 +22,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.virexa.screen.data.QualityOption
+import com.virexa.screen.data.RecordingSession
 import com.virexa.screen.ui.components.BottomTabBar
 import com.virexa.screen.ui.screens.*
 
@@ -82,6 +84,8 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     var pendingResultCode by remember { mutableIntStateOf(Activity.RESULT_CANCELED) }
                     var pendingData by remember { mutableStateOf<Intent?>(null) }
                     var waitingForMic by remember { mutableStateOf(false) }
+                    var pendingRecordingStart by remember { mutableStateOf(false) }
+                    var pendingBubbleStart by remember { mutableStateOf(false) }
 
                     val captureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
@@ -98,7 +102,58 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         waitingForMic = false
                     }
                     val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                        if (Settings.canDrawOverlays(context) && prefs.floatingBubbleEnabled) viewModel.startBubbleService()
+                        if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
+                    }
+                    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        when {
+                            granted && pendingRecordingStart -> {
+                                pendingRecordingStart = false
+                                val pm = context.getSystemService(MediaProjectionManager::class.java)
+                                val captureIntent = pm?.createScreenCaptureIntent() ?: return@rememberLauncherForActivityResult
+                                if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                    waitingForMic = true
+                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                } else {
+                                    captureLauncher.launch(captureIntent)
+                                }
+                            }
+                            granted && pendingBubbleStart -> {
+                                pendingBubbleStart = false
+                                if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
+                                else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
+                            }
+                            else -> {
+                                pendingRecordingStart = false
+                                pendingBubbleStart = false
+                                RecordingSession.setMessage("Se requiere permiso de notificaciones para usar el servicio en primer plano")
+                            }
+                        }
+                    }
+
+                    fun startRecordingFlow() {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            pendingRecordingStart = true
+                            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            return
+                        }
+                        val pm = context.getSystemService(MediaProjectionManager::class.java)
+                        val captureIntent = pm?.createScreenCaptureIntent() ?: return
+                        if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            waitingForMic = true
+                            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            captureLauncher.launch(captureIntent)
+                        }
+                    }
+
+                    fun startBubbleFlow() {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            pendingBubbleStart = true
+                            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            return
+                        }
+                        if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
+                        else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
                     }
 
                     HomeScreen(
@@ -106,29 +161,16 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         recordingState = recordingState,
                         countdown = countdown,
                         stats = stats,
-                        onStartRecording = {
-                            val pm = context.getSystemService(MediaProjectionManager::class.java)
-                            val captureIntent = pm?.createScreenCaptureIntent() ?: return@HomeScreen
-                            if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                waitingForMic = true
-                                micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            } else {
-                                captureLauncher.launch(captureIntent)
-                            }
-                        },
+                        onStartRecording = { startRecordingFlow() },
                         onStopRecording = viewModel::stopRecording,
                         onPauseRecording = viewModel::pauseRecording,
                         onResumeRecording = viewModel::resumeRecording,
                         onOpenLibrary = { navController.navigate(Dest.Library.route) },
                         onOpenSettings = { navController.navigate(Dest.Settings.route) },
-                        onEnableBubble = {
-                            if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
-                            else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
-                        },
+                        onEnableBubble = { startBubbleFlow() },
                         onRefresh = viewModel::refreshRecordings,
                     )
                 }
-
                 composable(Dest.Library.route) {
                     LibraryScreen(
                         recordings = recordings,

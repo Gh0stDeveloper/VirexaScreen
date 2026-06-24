@@ -246,7 +246,7 @@ fun HomeScreen(
                 }
                 if (preferences.watermarkEnabled && preferences.watermarkText.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Waterfall, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Default.Label, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                         Text("Marca: ${preferences.watermarkText}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

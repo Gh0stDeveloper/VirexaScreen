@@ -1,4 +1,3 @@
-
 package com.virexa.screen.data
 
 import android.content.ContentValues

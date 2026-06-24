@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
@@ -41,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
 import kotlin.math.abs
@@ -91,8 +92,6 @@ class FloatingBubbleService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private var bubbleView: ComposeView? = null
     private var params: WindowManager.LayoutParams? = null
-
-    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationHelper.ensureChannels(this)
@@ -145,7 +144,7 @@ class FloatingBubbleService : LifecycleService() {
         }
 
         val view = ComposeView(this).apply {
-            ViewTreeLifecycleOwner.set(this, this@FloatingBubbleService)
+            setViewTreeLifecycleOwner(this@FloatingBubbleService)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 BubbleRoot(

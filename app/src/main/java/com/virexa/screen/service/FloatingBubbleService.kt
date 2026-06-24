@@ -86,7 +86,7 @@ class FloatingBubbleService : LifecycleService() {
     private var params: WindowManager.LayoutParams? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationHelper.ensureChannels(this)

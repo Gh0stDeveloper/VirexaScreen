@@ -9,36 +9,20 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.virexa.screen.data.QualityOption
 import com.virexa.screen.ui.components.BottomTabBar
-import com.virexa.screen.ui.screens.HomeScreen
-import com.virexa.screen.ui.screens.LibraryScreen
-import com.virexa.screen.ui.screens.OnboardingScreen
-import com.virexa.screen.ui.screens.RecordingDetailScreen
-import com.virexa.screen.ui.screens.SettingsScreen
-import com.virexa.screen.ui.screens.SplashScreen
+import com.virexa.screen.ui.screens.*
 
 sealed class Dest(val route: String) {
     data object Splash : Dest("splash")
@@ -46,6 +30,7 @@ sealed class Dest(val route: String) {
     data object Home : Dest("home")
     data object Library : Dest("library")
     data object Settings : Dest("settings")
+    data object AdvancedSettings : Dest("advanced_settings")
     data object Detail : Dest("detail/{path}") {
         fun create(path: String) = "detail/${android.net.Uri.encode(path)}"
     }
@@ -67,10 +52,9 @@ fun AppNavGraph(viewModel: AppViewModel) {
             NavHost(
                 navController = navController,
                 startDestination = Dest.Splash.route,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = if (showBottomBar) 108.dp else 0.dp),
+                modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) 108.dp else 0.dp),
             ) {
+                // ── Splash
                 composable(Dest.Splash.route) {
                     SplashScreen {
                         navController.navigate(if (prefs.onboardingCompleted) Dest.Home.route else Dest.Onboarding.route) {
@@ -78,14 +62,14 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         }
                     }
                 }
+
+                // ── Onboarding
                 composable(Dest.Onboarding.route) {
                     OnboardingScreen(
                         preferences = prefs,
                         onFinish = {
                             viewModel.completeOnboarding()
-                            navController.navigate(Dest.Home.route) {
-                                popUpTo(Dest.Onboarding.route) { inclusive = true }
-                            }
+                            navController.navigate(Dest.Home.route) { popUpTo(Dest.Onboarding.route) { inclusive = true } }
                         },
                         onUpdateName = viewModel::updateProfileName,
                         onUpdateLanguage = viewModel::updateLanguage,
@@ -95,6 +79,8 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onUpdateQuality = viewModel::updateDefaultQuality,
                     )
                 }
+
+                // ── Home
                 composable(Dest.Home.route) {
                     var waitingForMicPermission by remember { mutableStateOf(false) }
                     var pendingCaptureIntent by remember { mutableStateOf<Intent?>(null) }
@@ -111,18 +97,12 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         pendingCaptureIntent = null
                         waitingForMicPermission = false
                     }
-
                     val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        if (granted && waitingForMicPermission) {
-                            pendingCaptureIntent?.let(captureLauncher::launch)
-                        }
+                        if (granted && waitingForMicPermission) pendingCaptureIntent?.let(captureLauncher::launch)
                         waitingForMicPermission = false
                     }
-
                     val overlayPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                        if (Settings.canDrawOverlays(context) && prefs.floatingBubbleEnabled) {
-                            viewModel.startBubbleService()
-                        }
+                        if (Settings.canDrawOverlays(context) && prefs.floatingBubbleEnabled) viewModel.startBubbleService()
                     }
 
                     HomeScreen(
@@ -147,16 +127,14 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onOpenLibrary = { navController.navigate(Dest.Library.route) },
                         onOpenSettings = { navController.navigate(Dest.Settings.route) },
                         onEnableBubble = {
-                            if (Settings.canDrawOverlays(context)) {
-                                viewModel.startBubbleService()
-                            } else {
-                                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}"))
-                                overlayPermissionLauncher.launch(intent)
-                            }
+                            if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
+                            else overlayPermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
                         },
                         onRefresh = viewModel::refreshRecordings,
                     )
                 }
+
+                // ── Library
                 composable(Dest.Library.route) {
                     LibraryScreen(
                         recordings = recordings,
@@ -166,6 +144,8 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onRefresh = viewModel::refreshRecordings,
                     )
                 }
+
+                // ── Settings
                 composable(Dest.Settings.route) {
                     SettingsScreen(
                         preferences = prefs,
@@ -178,67 +158,56 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onUpdateAudio = viewModel::updateDefaultAudioMode,
                         onUpdateQuality = viewModel::updateDefaultQuality,
                         onUpdateFolder = viewModel::updateOutputFolder,
-                        onStartBubble = {
-                            if (Settings.canDrawOverlays(context)) {
-                                viewModel.startBubbleService()
-                            }
-                        },
+                        onStartBubble = { if (Settings.canDrawOverlays(context)) viewModel.startBubbleService() },
+                        onOpenAdvanced = { navController.navigate(Dest.AdvancedSettings.route) },
                     )
                 }
+
+                // ── Advanced Settings
+                composable(Dest.AdvancedSettings.route) {
+                    AdvancedSettingsScreen(
+                        preferences = prefs,
+                        onBack = { navController.popBackStack() },
+                        onUpdateEncoder = viewModel::updateVideoEncoder,
+                        onUpdateBitrateMode = viewModel::updateBitrateMode,
+                        onUpdateCustomBitrate = viewModel::updateCustomBitrateMbps,
+                        onUpdateFrameRate = viewModel::updateFrameRate,
+                        onUpdateShowTimerOnBubble = viewModel::updateShowTimerOnBubble,
+                        onUpdateAutoPauseOnCall = viewModel::updateAutoPauseOnCall,
+                        onUpdateKeepScreenOn = viewModel::updateKeepScreenOn,
+                        onUpdateShowTouchIndicator = viewModel::updateShowTouchIndicator,
+                    )
+                }
+
+                // ── Recording Detail
                 composable(
                     route = Dest.Detail.route,
                     arguments = listOf(navArgument("path") { type = NavType.StringType }),
-                ) { backStackEntry ->
-                    val path = backStackEntry.arguments?.getString("path").orEmpty()
+                ) { backStack ->
+                    val path = backStack.arguments?.getString("path").orEmpty()
                     val recording = recordings.firstOrNull { it.filePath == android.net.Uri.decode(path) }
                     if (recording != null) {
                         RecordingDetailScreen(
                             recording = recording,
                             onBack = { navController.popBackStack() },
-                            onDelete = {
-                                viewModel.deleteRecording(recording)
-                                navController.popBackStack()
-                            },
+                            onDelete = { viewModel.deleteRecording(recording); navController.popBackStack() },
                             onRename = { newName -> viewModel.renameRecording(recording, newName) },
                         )
                     } else {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Grabación no encontrada")
-                        }
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Grabación no encontrada") }
                     }
                 }
             }
 
             AnimatedVisibility(
                 visible = showBottomBar,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 BottomTabBar(
-                    currentRoute = when (currentRoute) {
-                        Dest.Home.route -> "home"
-                        Dest.Library.route -> "library"
-                        Dest.Settings.route -> "settings"
-                        else -> null
-                    },
-                    onHome = {
-                        navController.navigate(Dest.Home.route) {
-                            popUpTo(Dest.Home.route) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    },
-                    onLibrary = {
-                        navController.navigate(Dest.Library.route) {
-                            launchSingleTop = true
-                        }
-                    },
-                    onSettings = {
-                        navController.navigate(Dest.Settings.route) {
-                            launchSingleTop = true
-                        }
-                    },
+                    currentRoute = when (currentRoute) { Dest.Home.route -> "home"; Dest.Library.route -> "library"; Dest.Settings.route -> "settings"; else -> null },
+                    onHome = { navController.navigate(Dest.Home.route) { popUpTo(Dest.Home.route) { inclusive = true }; launchSingleTop = true } },
+                    onLibrary = { navController.navigate(Dest.Library.route) { launchSingleTop = true } },
+                    onSettings = { navController.navigate(Dest.Settings.route) { launchSingleTop = true } },
                 )
             }
         }

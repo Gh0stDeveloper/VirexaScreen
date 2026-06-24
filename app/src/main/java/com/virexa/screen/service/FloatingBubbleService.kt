@@ -1,4 +1,3 @@
-
 package com.virexa.screen.service
 
 import android.app.Notification
@@ -14,47 +13,41 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
-import com.virexa.screen.ui.components.BubbleMiniLabel
+import com.virexa.screen.ui.Theme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class FloatingBubbleService : Service() {
@@ -62,6 +55,7 @@ class FloatingBubbleService : Service() {
     companion object {
         const val ACTION_CLOSE = "com.virexa.screen.action.CLOSE_BUBBLE"
         const val ACTION_OPEN_PANEL = "com.virexa.screen.action.OPEN_PANEL"
+        private const val CLICK_THRESHOLD_PX = 12f
     }
 
     private lateinit var windowManager: WindowManager
@@ -72,13 +66,16 @@ class FloatingBubbleService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        NotificationHelper.ensureChannel(this)
+        NotificationHelper.ensureChannels(this)
         if (intent?.action == ACTION_CLOSE) {
             stopSelf()
             return START_NOT_STICKY
         }
         return runCatching {
-            ServiceCompat.startForeground(this, 2, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            ServiceCompat.startForeground(
+                this, 2, buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
             showBubble()
             START_STICKY
         }.getOrElse {
@@ -90,13 +87,30 @@ class FloatingBubbleService : Service() {
 
     private fun showBubble() {
         if (bubbleView != null) return
-
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayType,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 24
+            y = 200
+        }
 
         val view = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
-                BubbleSurface(
+                BubbleRoot(
                     onOpenApp = { openApp() },
                     onPause = { sendRecordAction(ScreenRecordService.ACTION_PAUSE) },
                     onResume = { sendRecordAction(ScreenRecordService.ACTION_RESUME) },
@@ -107,57 +121,48 @@ class FloatingBubbleService : Service() {
             }
         }
 
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 64
-            y = 220
-        }
-
+        // Touch listener that distinguishes drag vs click
         view.setOnTouchListener(object : View.OnTouchListener {
-            private var initialX = 0
-            private var initialY = 0
-            private var initialTouchX = 0f
-            private var initialTouchY = 0f
+            private var initX = 0; private var initY = 0
+            private var initTouchX = 0f; private var initTouchY = 0f
+            private var isDragging = false
 
             override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.action) {
+                return when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        initialX = params?.x ?: 0
-                        initialY = params?.y ?: 0
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
-                        return true
+                        initX = params?.x ?: 0
+                        initY = params?.y ?: 0
+                        initTouchX = event.rawX
+                        initTouchY = event.rawY
+                        isDragging = false
+                        // Don't consume — let children handle clicks
+                        false
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        params?.x = (initialX + (event.rawX - initialTouchX)).roundToInt()
-                        params?.y = (initialY + (event.rawY - initialTouchY)).roundToInt()
-                        runCatching { windowManager.updateViewLayout(view, params) }
-                        return true
+                        val dx = event.rawX - initTouchX
+                        val dy = event.rawY - initTouchY
+                        if (!isDragging && (abs(dx) > CLICK_THRESHOLD_PX || abs(dy) > CLICK_THRESHOLD_PX)) {
+                            isDragging = true
+                        }
+                        if (isDragging) {
+                            params?.x = (initX + dx).roundToInt()
+                            params?.y = (initY + dy).roundToInt()
+                            runCatching { windowManager.updateViewLayout(view, params) }
+                            true
+                        } else false
                     }
+                    MotionEvent.ACTION_UP -> {
+                        if (isDragging) { isDragging = false; true } else false
+                    }
+                    else -> false
                 }
-                return false
             }
         })
 
         bubbleView = view
-        runCatching { windowManager.addView(view, params) }
-            .onFailure {
-                bubbleView = null
-                throw it
-            }
+        runCatching { windowManager.addView(view, params) }.onFailure {
+            bubbleView = null; throw it
+        }
     }
 
     private fun openApp() {
@@ -170,34 +175,37 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        bubbleView?.let { view ->
-            runCatching { windowManager.removeView(view) }
-        }
+        bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null
     }
 
     private fun buildNotification(): Notification {
-        val openIntent = Intent(this, MainActivity::class.java)
-        val openPendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            openIntent,
+        val openPi = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-
-        return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_ID)
+        val closePi = PendingIntent.getService(
+            this, 10,
+            Intent(this, FloatingBubbleService::class.java).apply { action = ACTION_CLOSE },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_BUBBLE_ID)
             .setContentTitle("Virexa Screen")
             .setContentText("Ventana flotante activa")
             .setSmallIcon(android.R.drawable.presence_video_online)
-            .setContentIntent(openPendingIntent)
+            .setContentIntent(openPi)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cerrar burbuja", closePi)
             .build()
     }
 }
 
+// ─── Composable UI ────────────────────────────────────────────────────────────
+
 @Composable
-private fun BubbleSurface(
+private fun BubbleRoot(
     onOpenApp: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -207,69 +215,155 @@ private fun BubbleSurface(
 ) {
     val state by RecordingSession.uiState.collectAsState()
     var expanded by remember { mutableStateOf(false) }
+
+    val isRecording = state.isRecording
+    val isPaused = state.isPaused
+
+    // Accent color based on recording state
+    val accentColor by animateColorAsState(
+        targetValue = when {
+            isRecording && !isPaused -> Color(0xFFE53935)
+            isPaused -> Color(0xFFFF9800)
+            else -> Color(0xFF6C63FF)
+        },
+        animationSpec = tween(400),
+        label = "accent",
+    )
+
     MaterialTheme {
         Surface(
-            shape = RoundedCornerShape(26.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)),
-            shadowElevation = 14.dp,
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp, accentColor.copy(alpha = 0.5f)
+            ),
+            shadowElevation = 16.dp,
+            modifier = Modifier.widthIn(min = 160.dp, max = 260.dp),
         ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 104.dp, height = 16.dp)
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                listOf(Color.Transparent, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f), Color.Transparent),
-                            ),
-                            shape = RoundedCornerShape(999.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+
+                // ── Header row ──────────────────────────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("", color = Color.Transparent)
+                    // Recording dot + label
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(accentColor, CircleShape),
+                        )
+                        Text(
+                            text = when {
+                                isRecording && !isPaused -> "Grabando"
+                                isPaused -> "En pausa"
+                                else -> "Virexa"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = accentColor,
+                        )
+                    }
+                    // Expand / collapse
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (expanded) "Colapsar" else "Expandir",
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    BubbleIconChip(
-                        icon = Icons.Default.Settings,
-                        label = if (expanded) "Cerrar panel" else "Panel",
-                        onClick = { expanded = !expanded },
+                // ── Timer (only while recording) ────────────────────────────
+                AnimatedVisibility(visible = isRecording) {
+                    Text(
+                        text = formatElapsed(state.elapsedMs),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontFeatureSettings = "tnum",
+                            letterSpacing = 2.sp,
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor,
                     )
-                    BubbleIconChip(
-                        icon = Icons.Default.PlayArrow,
-                        label = "Abrir app",
+                }
+
+                // ── Action row ───────────────────────────────────────────────
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (isRecording) {
+                        BubbleBtn(
+                            icon = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            label = if (isPaused) "Reanudar" else "Pausar",
+                            tint = accentColor,
+                            onClick = if (isPaused) onResume else onPause,
+                        )
+                        BubbleBtn(
+                            icon = Icons.Default.Stop,
+                            label = "Detener",
+                            tint = MaterialTheme.colorScheme.error,
+                            onClick = onStop,
+                        )
+                    } else {
+                        BubbleBtn(
+                            icon = Icons.Default.FiberManualRecord,
+                            label = "Nueva",
+                            tint = accentColor,
+                            onClick = onNew,
+                        )
+                    }
+                    BubbleBtn(
+                        icon = Icons.Default.OpenInNew,
+                        label = "Abrir",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = onOpenApp,
                     )
-                    BubbleIconChip(
-                        icon = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        label = if (state.isPaused) "Seguir" else "Pausa",
-                        onClick = if (state.isPaused) onResume else onPause,
-                    )
-                    BubbleIconChip(
-                        icon = Icons.Default.Stop,
-                        label = "Detener",
-                        onClick = onStop,
-                    )
-                    BubbleIconChip(
+                    BubbleBtn(
                         icon = Icons.Default.Close,
                         label = "Cerrar",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = onClose,
                     )
                 }
 
-                if (expanded) {
-                    BubbleMiniLabel(if (state.isRecording) "Panel flotante activo" else "Panel flotante listo")
-                    BubbleIconChip(
-                        icon = Icons.Default.PlayArrow,
-                        label = "Nueva",
-                        onClick = onNew,
-                    )
-                }
-
-                if (state.isRecording) {
-                    Text(if (state.isPaused) "Grabación en pausa" else "Grabación activa", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    Text("Atajo flotante", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // ── Expanded panel ───────────────────────────────────────────
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Text(
+                            text = if (isRecording) "Sesión activa" else "Sin grabación activa",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (!isRecording) {
+                            BubbleBtn(
+                                icon = Icons.Default.FiberManualRecord,
+                                label = "Iniciar nueva",
+                                tint = accentColor,
+                                onClick = onNew,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -277,15 +371,45 @@ private fun BubbleSurface(
 }
 
 @Composable
-private fun BubbleIconChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun BubbleBtn(
+    icon: ImageVector,
     label: String,
+    tint: Color,
     onClick: () -> Unit,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
-            Icon(imageVector = icon, contentDescription = label)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = tint.copy(alpha = 0.12f),
+            modifier = Modifier.size(40.dp),
+            onClick = onClick,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 9.sp,
+        )
     }
+}
+
+private fun formatElapsed(ms: Long): String {
+    if (ms <= 0L) return "00:00"
+    val totalSec = ms / 1000
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }

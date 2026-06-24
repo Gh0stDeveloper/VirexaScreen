@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,8 +23,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val recordingsRepo = RecordingRepository(application)
 
     val preferences: StateFlow<UserPreferences> = prefs.preferencesFlow.stateInViewModel(
-        viewModelScope,
-        UserPreferences()
+        viewModelScope, UserPreferences()
     )
 
     val recordingUiState: StateFlow<RecordingUiState> = RecordingSession.uiState
@@ -53,6 +51,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Basic prefs
     fun updateProfileName(value: String) = viewModelScope.launch { prefs.updateProfileName(value) }
     fun updateLanguage(value: LanguageOption) = viewModelScope.launch { prefs.updateLanguage(value) }
     fun updateThemeMode(value: ThemeMode) = viewModelScope.launch { prefs.updateThemeMode(value) }
@@ -63,6 +62,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun updateOutputFolder(value: String) = viewModelScope.launch { prefs.updateOutputFolderName(value) }
     fun completeOnboarding() = viewModelScope.launch { prefs.markOnboardingCompleted() }
 
+    // Advanced prefs
+    fun updateVideoEncoder(value: VideoEncoder) = viewModelScope.launch { prefs.updateVideoEncoder(value) }
+    fun updateBitrateMode(value: BitrateMode) = viewModelScope.launch { prefs.updateBitrateMode(value) }
+    fun updateCustomBitrateMbps(value: Int) = viewModelScope.launch { prefs.updateCustomBitrateMbps(value) }
+    fun updateFrameRate(value: Int) = viewModelScope.launch { prefs.updateFrameRate(value) }
+    fun updateShowTimerOnBubble(value: Boolean) = viewModelScope.launch { prefs.updateShowTimerOnBubble(value) }
+    fun updateAutoPauseOnCall(value: Boolean) = viewModelScope.launch { prefs.updateAutoPauseOnCall(value) }
+    fun updateKeepScreenOn(value: Boolean) = viewModelScope.launch { prefs.updateKeepScreenOn(value) }
+    fun updateShowTouchIndicator(value: Boolean) = viewModelScope.launch { prefs.updateShowTouchIndicator(value) }
+
     fun startRecording(
         permissionResultCode: Int,
         permissionData: Intent,
@@ -70,6 +79,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         audioMode: AudioMode,
     ) {
         val context = getApplication<Application>()
+        val p = preferences.value
+        val bitrate = when (p.bitrateMode) {
+            BitrateMode.CUSTOM -> p.customBitrateMbps * 1_000_000
+            BitrateMode.AUTO -> bitrateForQuality(quality)
+        }
+        val fps = p.frameRate.takeIf { it > 0 } ?: quality.frameRate
+
         val serviceIntent = Intent(context, ScreenRecordService::class.java).apply {
             action = ScreenRecordService.ACTION_START
             putExtra(ScreenRecordService.EXTRA_RESULT_CODE, permissionResultCode)
@@ -77,10 +93,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(ScreenRecordService.EXTRA_WIDTH, quality.width)
             putExtra(ScreenRecordService.EXTRA_HEIGHT, quality.height)
             putExtra(ScreenRecordService.EXTRA_DENSITY, context.resources.displayMetrics.densityDpi)
-            putExtra(ScreenRecordService.EXTRA_FPS, quality.frameRate)
-            putExtra(ScreenRecordService.EXTRA_BITRATE, bitrateForQuality(quality))
+            putExtra(ScreenRecordService.EXTRA_FPS, fps)
+            putExtra(ScreenRecordService.EXTRA_BITRATE, bitrate)
             putExtra(ScreenRecordService.EXTRA_AUDIO_MODE, audioMode.name)
-            putExtra(ScreenRecordService.EXTRA_OUTPUT_FOLDER, preferences.value.outputFolderName)
+            putExtra(ScreenRecordService.EXTRA_OUTPUT_FOLDER, p.outputFolderName)
+            putExtra(ScreenRecordService.EXTRA_ENCODER, p.videoEncoder.name)
         }
         androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
         RecordingSession.update { it.copy(message = "Solicitando captura de pantalla") }
@@ -93,8 +110,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun startBubbleService() {
         val context = getApplication<Application>()
         androidx.core.content.ContextCompat.startForegroundService(
-            context,
-            Intent(context, FloatingBubbleService::class.java)
+            context, Intent(context, FloatingBubbleService::class.java)
         )
     }
 
@@ -115,9 +131,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun renameRecording(file: RecordingFile, newName: String) {
         viewModelScope.launch {
-            recordingsRepo.renameRecording(file, newName)?.let {
-                refreshRecordings()
-            }
+            recordingsRepo.renameRecording(file, newName)?.let { refreshRecordings() }
         }
     }
 
@@ -129,6 +143,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-private fun <T> kotlinx.coroutines.flow.Flow<T>.stateInViewModel(scope: kotlinx.coroutines.CoroutineScope, initialValue: T): StateFlow<T> {
-    return stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialValue)
-}
+private fun <T> kotlinx.coroutines.flow.Flow<T>.stateInViewModel(
+    scope: kotlinx.coroutines.CoroutineScope,
+    initialValue: T,
+): StateFlow<T> = stateIn(scope, SharingStarted.WhileSubscribed(5_000), initialValue)

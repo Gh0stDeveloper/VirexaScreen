@@ -1,4 +1,3 @@
-
 package com.virexa.screen.data
 
 import android.net.Uri
@@ -10,6 +9,16 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 enum class LanguageOption(val label: String) {
     SPANISH("Español"),
     ENGLISH("English");
+}
+
+enum class VideoEncoder(val label: String, val codecName: String) {
+    H264("H.264 (AVC)", "video/avc"),
+    H265("H.265 (HEVC)", "video/hevc"),
+}
+
+enum class BitrateMode(val label: String) {
+    AUTO("Automático"),
+    CUSTOM("Personalizado"),
 }
 
 enum class AudioMode(
@@ -131,8 +140,17 @@ data class UserPreferences(
     val defaultAudioMode: AudioMode = AudioMode.MICROPHONE,
     val floatingBubbleEnabled: Boolean = true,
     val showQuickControls: Boolean = true,
-    val outputFolderName: String = "VixeraScreen",
+    val outputFolderName: String = "VirexaScreen",
     val onboardingCompleted: Boolean = false,
+    // Ajustes avanzados
+    val videoEncoder: VideoEncoder = VideoEncoder.H264,
+    val bitrateMode: BitrateMode = BitrateMode.AUTO,
+    val customBitrateMbps: Int = 8,
+    val frameRate: Int = 60,
+    val showTimerOnBubble: Boolean = true,
+    val autoPauseOnCall: Boolean = false,
+    val keepScreenOn: Boolean = true,
+    val showTouchIndicator: Boolean = false,
 )
 
 data class RecordingFile(
@@ -155,4 +173,5 @@ data class RecordingUiState(
     val isPaused: Boolean = false,
     val activeFilePath: String? = null,
     val message: String? = null,
+    val elapsedMs: Long = 0L,
 )

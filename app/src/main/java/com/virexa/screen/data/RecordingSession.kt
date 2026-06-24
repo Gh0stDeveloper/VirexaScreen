@@ -15,4 +15,8 @@ object RecordingSession {
     fun setMessage(value: String?) {
         _uiState.value = _uiState.value.copy(message = value)
     }
+
+    fun setElapsed(ms: Long) {
+        _uiState.value = _uiState.value.copy(elapsedMs = ms)
+    }
 }

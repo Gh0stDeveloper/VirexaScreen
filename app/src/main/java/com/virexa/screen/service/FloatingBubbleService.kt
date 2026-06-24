@@ -1,14 +1,15 @@
 package com.virexa.screen.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.provider.Settings
 import android.graphics.PixelFormat
 import android.os.Build
+import android.provider.Settings
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +58,26 @@ class FloatingBubbleService : Service() {
         const val ACTION_CLOSE = "com.virexa.screen.action.CLOSE_BUBBLE"
         const val ACTION_OPEN_PANEL = "com.virexa.screen.action.OPEN_PANEL"
         private const val CLICK_THRESHOLD_PX = 12f
+
+        fun start(context: Context): Boolean {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                RecordingSession.setMessage("Activa notificaciones para mostrar la ventana flotante")
+                return false
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+                RecordingSession.setMessage("Concede permiso de superposición para mostrar la ventana flotante")
+                return false
+            }
+            runCatching { ContextCompat.startForegroundService(context, Intent(context, FloatingBubbleService::class.java)) }
+                .onFailure { RecordingSession.setMessage("No se pudo iniciar la ventana flotante: ${it.message}") }
+            return true
+        }
+
+        fun stop(context: Context) {
+            runCatching { context.stopService(Intent(context, FloatingBubbleService::class.java)) }
+        }
     }
 
     private lateinit var windowManager: WindowManager
@@ -88,10 +110,6 @@ class FloatingBubbleService : Service() {
     private fun showBubble() {
         if (bubbleView != null) return
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            throw IllegalStateException("Se requiere permiso de superposición")
-        }
 
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -170,7 +188,13 @@ class FloatingBubbleService : Service() {
     }
 
     private fun openApp() {
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+            )
+        }.onFailure { RecordingSession.setMessage("No se pudo abrir la app: ${it.message}") }
     }
 
     private fun sendRecordAction(action: String) {

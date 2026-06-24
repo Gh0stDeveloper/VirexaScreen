@@ -46,7 +46,7 @@ class VirexaQuickSettingsTileService : TileService() {
             // Not recording → open app or launch bubble
             else -> {
                 if (Settings.canDrawOverlays(this)) {
-                    ContextCompat.startForegroundService(this, Intent(this, FloatingBubbleService::class.java))
+                    FloatingBubbleService.start(this)
                     // Open app to start the screen capture permission flow
                     startActivityAndCollapse(
                         Intent(this, MainActivity::class.java).apply {

@@ -23,11 +23,10 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.PowerManager
-import android.provider.Settings
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.virexa.screen.MainActivity
 import com.virexa.screen.R
@@ -64,7 +63,7 @@ class ScreenRecordService : android.app.Service() {
         const val EXTRA_NOISE_SUPPRESSION = "extra_noise_suppression"
         const val EXTRA_MIC_BOOST = "extra_mic_boost"
         const val EXTRA_DND = "extra_dnd"
-        const val EXTRA_SHOW_BUBBLE = "extra_show_bubble"
+        const val EXTRA_AUTO_START_BUBBLE = "extra_auto_start_bubble"
     }
 
     private val recorderRepository by lazy { RecordingRepository(applicationContext) }
@@ -90,7 +89,6 @@ class ScreenRecordService : android.app.Service() {
 
     // DND
     private var dndEnabled = false
-    private var showBubbleOnStart = false
     private var previousDndMode = NotificationManager.INTERRUPTION_FILTER_ALL
 
     // Timer
@@ -150,14 +148,12 @@ class ScreenRecordService : android.app.Service() {
         silenceThresholdMs = intent.getIntExtra(EXTRA_SILENCE_THRESHOLD_S, 10) * 1000L
         val noiseSuppressionEnabled = intent.getBooleanExtra(EXTRA_NOISE_SUPPRESSION, false)
         dndEnabled = intent.getBooleanExtra(EXTRA_DND, false)
-        showBubbleOnStart = intent.getBooleanExtra(EXTRA_SHOW_BUBBLE, false)
 
         currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
             if (audioMode.usesMicrophone) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
 
-        ServiceCompat.startForeground(this, 1, buildNotification("Preparando grabación…", false), currentForegroundType)
-
         try {
+            ServiceCompat.startForeground(this, 1, buildNotification("Preparando grabación…", false), currentForegroundType)
             val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mpManager.getMediaProjection(resultCode, projectionData)?.also {
                 it.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
@@ -219,11 +215,12 @@ class ScreenRecordService : android.app.Service() {
                 it.copy(isRecording = true, isPaused = false, activeFilePath = destination.displayPath, elapsedMs = 0L,
                     message = if (audioMode.requestsSystemAudio) "Grabando — audio interno sujeto al sistema." else "Grabación iniciada")
             }
-            ServiceCompat.startForeground(this, 1, buildNotification("Grabando pantalla", false), currentForegroundType)
 
-            if (showBubbleOnStart && (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this))) {
-                runCatching { ContextCompat.startForegroundService(this, Intent(this, FloatingBubbleService::class.java)) }
+            if (intent.getBooleanExtra(EXTRA_AUTO_START_BUBBLE, false)) {
+                FloatingBubbleService.start(this)
             }
+
+            ServiceCompat.startForeground(this, 1, buildNotification("Grabando pantalla", false), currentForegroundType)
         } catch (t: Throwable) {
             timerHandler.removeCallbacks(timerRunnable)
             cleanupOutput(shouldDelete = true)
@@ -375,8 +372,16 @@ class ScreenRecordService : android.app.Service() {
             .build()
     }
 
-    private fun openApp() { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    private fun closeBubble() { stopService(Intent(this, FloatingBubbleService::class.java)) }
+    private fun openApp() {
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+            )
+        }
+    }
+    private fun closeBubble() { FloatingBubbleService.stop(this) }
 
     override fun onDestroy() {
         super.onDestroy()

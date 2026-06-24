@@ -3,7 +3,7 @@ package com.virexa.screen.service
 import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
-import android.app.Service
+import androidx.lifecycle.LifecycleService
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewTreeLifecycleOwner
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +53,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-class FloatingBubbleService : Service() {
+class FloatingBubbleService : LifecycleService() {
 
     companion object {
         const val ACTION_CLOSE = "com.virexa.screen.action.CLOSE_BUBBLE"
@@ -130,6 +131,7 @@ class FloatingBubbleService : Service() {
         }
 
         val view = ComposeView(this).apply {
+            ViewTreeLifecycleOwner.set(this, this@FloatingBubbleService)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 BubbleRoot(

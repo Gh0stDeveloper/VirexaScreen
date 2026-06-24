@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Bundle  // <-- IMPORTANTE
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -250,7 +251,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     override fun onDestroy() {
-        savedStateRegistryController.performSave(Bundle()) // Se pasa un Bundle vacío, obligatorio
+        savedStateRegistryController.performSave(Bundle.EMPTY)  // o Bundle()
         super.onDestroy()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null

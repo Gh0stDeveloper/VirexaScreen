@@ -10,7 +10,6 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
-import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -31,6 +30,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
@@ -41,13 +41,27 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
 import com.virexa.screen.MainActivity
 import com.virexa.screen.data.RecordingSession
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-class FloatingBubbleService : LifecycleService() {
+class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
+
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateRegistryController.savedStateRegistry
+
+    override fun onCreate() {
+        super.onCreate()
+        savedStateRegistryController.performAttach()
+        savedStateRegistryController.performRestore(null)
+    }
 
     companion object {
         const val ACTION_CLOSE = "com.virexa.screen.action.CLOSE_BUBBLE"
@@ -91,8 +105,6 @@ class FloatingBubbleService : LifecycleService() {
     private lateinit var windowManager: WindowManager
     private var bubbleView: ComposeView? = null
     private var params: WindowManager.LayoutParams? = null
-
-    override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         NotificationHelper.ensureChannels(this)
@@ -145,7 +157,8 @@ class FloatingBubbleService : LifecycleService() {
         }
 
         val view = ComposeView(this).apply {
-            ViewTreeLifecycleOwner.set(this, this@FloatingBubbleService)
+            setViewTreeLifecycleOwner(this@FloatingBubbleService)
+            setViewTreeSavedStateRegistryOwner(this@FloatingBubbleService)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
                 BubbleRoot(
@@ -237,6 +250,7 @@ class FloatingBubbleService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        savedStateRegistryController.performSave()
         super.onDestroy()
         bubbleView?.let { runCatching { windowManager.removeView(it) } }
         bubbleView = null

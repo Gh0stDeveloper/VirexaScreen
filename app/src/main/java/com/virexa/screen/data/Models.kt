@@ -64,11 +64,12 @@ data class QualityOption(
 
     companion object {
         val presets = listOf(
-            QualityOption("720p", "HD", "1280 × 720", 1280, 720, "16:9", "3–5 Mbps", "20–35 MB", "Bajo"),
-            QualityOption("1080p", "Full HD", "1920 × 1080", 1920, 1080, "16:9", "6–10 Mbps", "45–75 MB", "Medio"),
-            QualityOption("1440p", "2K / QHD", "2560 × 1440", 2560, 1440, "16:9", "12–18 Mbps", "90–140 MB", "Alto"),
-            QualityOption("2160p", "4K", "3840 × 2160", 3840, 2160, "16:9", "20–35 Mbps", "150–260 MB", "Muy alto"),
+            QualityOption("720p", "HD", "Pantalla completa hasta 720p", 720, 1280, "Adaptable a la pantalla", "3–5 Mbps", "20–35 MB", "Bajo"),
+            QualityOption("1080p", "Full HD", "Pantalla completa hasta 1080p", 1080, 1920, "Adaptable a la pantalla", "6–10 Mbps", "45–75 MB", "Medio"),
+            QualityOption("1440p", "2K / QHD", "Pantalla completa hasta 2K", 1440, 2560, "Adaptable a la pantalla", "12–18 Mbps", "90–140 MB", "Alto", frameRate = 30),
+            QualityOption("2160p", "4K", "Pantalla completa hasta 4K", 2160, 3840, "Adaptable a la pantalla", "20–35 Mbps", "150–260 MB", "Muy alto", frameRate = 30),
         )
+
         fun default() = presets[1]
         fun fromId(id: String?) = presets.firstOrNull { it.id == id } ?: default()
     }

@@ -60,7 +60,7 @@ fun AppNavGraph(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) 108.dp else 0.dp),
             ) {
                 composable(Dest.Splash.route) {
-                    SplashScreen {
+                    VirexaSplashScreen {
                         navController.navigate(if (prefs.onboardingCompleted) Dest.Home.route else Dest.Onboarding.route) {
                             popUpTo(Dest.Splash.route) { inclusive = true }
                         }
@@ -70,7 +70,12 @@ fun AppNavGraph(viewModel: AppViewModel) {
                 composable(Dest.Onboarding.route) {
                     OnboardingScreen(
                         preferences = prefs,
-                        onFinish = { viewModel.completeOnboarding(); navController.navigate(Dest.Home.route) { popUpTo(Dest.Onboarding.route) { inclusive = true } } },
+                        onFinish = {
+                            viewModel.completeOnboarding()
+                            navController.navigate(Dest.Home.route) {
+                                popUpTo(Dest.Onboarding.route) { inclusive = true }
+                            }
+                        },
                         onUpdateName = viewModel::updateProfileName,
                         onUpdateLanguage = viewModel::updateLanguage,
                         onUpdateTheme = viewModel::updateThemeMode,
@@ -87,41 +92,102 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     var pendingRecordingStart by remember { mutableStateOf(false) }
                     var pendingBubbleStart by remember { mutableStateOf(false) }
 
+                    fun overlayPermissionIntent(): Intent {
+                        return Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:${context.packageName}"),
+                        )
+                    }
+
                     val captureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                             pendingResultCode = result.resultCode
                             pendingData = result.data
-                            viewModel.startRecordingWithCountdown(result.resultCode, result.data!!, QualityOption.fromId(prefs.defaultQualityId), prefs.defaultAudioMode)
+                            viewModel.startRecordingWithCountdown(
+                                result.resultCode,
+                                result.data!!,
+                                QualityOption.fromId(prefs.defaultQualityId),
+                                prefs.defaultAudioMode,
+                            )
                         }
                         waitingForMic = false
                     }
+
                     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        if (granted && waitingForMic && pendingData != null) {
-                            viewModel.startRecordingWithCountdown(pendingResultCode, pendingData!!, QualityOption.fromId(prefs.defaultQualityId), prefs.defaultAudioMode)
+                        if (granted && waitingForMic) {
+                            val pm = context.getSystemService(MediaProjectionManager::class.java)
+                            val captureIntent = pm?.createScreenCaptureIntent()
+                            if (captureIntent != null) {
+                                captureLauncher.launch(captureIntent)
+                            } else {
+                                RecordingSession.setMessage("No se pudo abrir el permiso de captura de pantalla")
+                            }
+                        } else if (!granted) {
+                            RecordingSession.setMessage("Permiso de micrófono denegado")
                         }
                         waitingForMic = false
                     }
-                    val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-                        if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
+
+                    fun launchCapturePermission() {
+                        val pm = context.getSystemService(MediaProjectionManager::class.java)
+                        val captureIntent = pm?.createScreenCaptureIntent() ?: return
+                        if (prefs.defaultAudioMode.usesMicrophone &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            waitingForMic = true
+                            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            captureLauncher.launch(captureIntent)
+                        }
                     }
+
+                    val overlayLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                        when {
+                            Settings.canDrawOverlays(context) && pendingRecordingStart -> {
+                                pendingRecordingStart = false
+                                launchCapturePermission()
+                            }
+
+                            Settings.canDrawOverlays(context) && pendingBubbleStart -> {
+                                pendingBubbleStart = false
+                                viewModel.startBubbleService()
+                            }
+
+                            Settings.canDrawOverlays(context) -> {
+                                viewModel.startBubbleService()
+                            }
+
+                            else -> {
+                                pendingRecordingStart = false
+                                pendingBubbleStart = false
+                                RecordingSession.setMessage("Permiso de superposición denegado; no se puede mostrar contador/burbuja sobre otras apps")
+                            }
+                        }
+                    }
+
                     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                         when {
                             granted && pendingRecordingStart -> {
-                                pendingRecordingStart = false
-                                val pm = context.getSystemService(MediaProjectionManager::class.java)
-                                val captureIntent = pm?.createScreenCaptureIntent() ?: return@rememberLauncherForActivityResult
-                                if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                    waitingForMic = true
-                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                                    (prefs.countdownOption.seconds > 0 || prefs.floatingBubbleEnabled || prefs.watermarkEnabled) &&
+                                    !Settings.canDrawOverlays(context)
+                                ) {
+                                    overlayLauncher.launch(overlayPermissionIntent())
                                 } else {
-                                    captureLauncher.launch(captureIntent)
+                                    pendingRecordingStart = false
+                                    launchCapturePermission()
                                 }
                             }
+
                             granted && pendingBubbleStart -> {
                                 pendingBubbleStart = false
-                                if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
-                                else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
+                                if (Settings.canDrawOverlays(context)) {
+                                    viewModel.startBubbleService()
+                                } else {
+                                    overlayLauncher.launch(overlayPermissionIntent())
+                                }
                             }
+
                             else -> {
                                 pendingRecordingStart = false
                                 pendingBubbleStart = false
@@ -131,32 +197,43 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     }
 
                     fun startRecordingFlow() {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        ) {
                             pendingRecordingStart = true
                             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             return
                         }
-                        val pm = context.getSystemService(MediaProjectionManager::class.java)
-                        val captureIntent = pm?.createScreenCaptureIntent() ?: return
-                        if (prefs.defaultAudioMode.usesMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                            waitingForMic = true
-                            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        } else {
-                            captureLauncher.launch(captureIntent)
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            (prefs.countdownOption.seconds > 0 || prefs.floatingBubbleEnabled || prefs.watermarkEnabled) &&
+                            !Settings.canDrawOverlays(context)
+                        ) {
+                            pendingRecordingStart = true
+                            overlayLauncher.launch(overlayPermissionIntent())
+                            return
                         }
+
+                        launchCapturePermission()
                     }
 
                     fun startBubbleFlow() {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        ) {
                             pendingBubbleStart = true
                             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             return
                         }
-                        if (Settings.canDrawOverlays(context)) viewModel.startBubbleService()
-                        else overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:${context.packageName}")))
+                        if (Settings.canDrawOverlays(context)) {
+                            viewModel.startBubbleService()
+                        } else {
+                            pendingBubbleStart = true
+                            overlayLauncher.launch(overlayPermissionIntent())
+                        }
                     }
 
-                    HomeScreen(
+                    VirexaHomeScreen(
                         preferences = prefs,
                         recordingState = recordingState,
                         countdown = countdown,
@@ -171,6 +248,7 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onRefresh = viewModel::refreshRecordings,
                     )
                 }
+
                 composable(Dest.Library.route) {
                     LibraryScreen(
                         recordings = recordings,
@@ -198,7 +276,18 @@ fun AppNavGraph(viewModel: AppViewModel) {
                         onUpdateAudio = viewModel::updateDefaultAudioMode,
                         onUpdateQuality = viewModel::updateDefaultQuality,
                         onUpdateFolder = viewModel::updateOutputFolder,
-                        onStartBubble = { if (Settings.canDrawOverlays(context)) viewModel.startBubbleService() },
+                        onStartBubble = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        android.net.Uri.parse("package:${context.packageName}"),
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } else {
+                                viewModel.startBubbleService()
+                            }
+                        },
                         onOpenAdvanced = { navController.navigate(Dest.AdvancedSettings.route) },
                     )
                 }
@@ -233,17 +322,38 @@ fun AppNavGraph(viewModel: AppViewModel) {
                     val path = back.arguments?.getString("path").orEmpty()
                     val recording = recordings.firstOrNull { it.filePath == android.net.Uri.decode(path) }
                     if (recording != null) {
-                        RecordingDetailScreen(recording = recording, onBack = { navController.popBackStack() }, onDelete = { viewModel.deleteRecording(recording); navController.popBackStack() }, onRename = { viewModel.renameRecording(recording, it) })
+                        RecordingDetailScreen(
+                            recording = recording,
+                            onBack = { navController.popBackStack() },
+                            onDelete = {
+                                viewModel.deleteRecording(recording)
+                                navController.popBackStack()
+                            },
+                            onRename = { viewModel.renameRecording(recording, it) },
+                        )
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Grabación no encontrada") }
                     }
                 }
             }
 
-            AnimatedVisibility(visible = showBottomBar, modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp)) {
+            AnimatedVisibility(
+                visible = showBottomBar,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
                 BottomTabBar(
-                    currentRoute = when (currentRoute) { Dest.Home.route -> "home"; Dest.Library.route -> "library"; Dest.Settings.route -> "settings"; else -> null },
-                    onHome = { navController.navigate(Dest.Home.route) { popUpTo(Dest.Home.route) { inclusive = true }; launchSingleTop = true } },
+                    currentRoute = when (currentRoute) {
+                        Dest.Home.route -> "home"
+                        Dest.Library.route -> "library"
+                        Dest.Settings.route -> "settings"
+                        else -> null
+                    },
+                    onHome = {
+                        navController.navigate(Dest.Home.route) {
+                            popUpTo(Dest.Home.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onLibrary = { navController.navigate(Dest.Library.route) { launchSingleTop = true } },
                     onSettings = { navController.navigate(Dest.Settings.route) { launchSingleTop = true } },
                 )

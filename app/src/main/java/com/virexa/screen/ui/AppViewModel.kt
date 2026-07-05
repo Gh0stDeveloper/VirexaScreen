@@ -5,10 +5,14 @@ import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.virexa.screen.data.*
+import com.virexa.screen.service.CountdownOverlayService
 import com.virexa.screen.service.FloatingBubbleService
 import com.virexa.screen.service.ScreenRecordService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -26,7 +30,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val stats: StateFlow<RecordingStats> = _recordings.map { StatsRepository.compute(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RecordingStats())
 
-    // Countdown state for UI
     private val _countdown = MutableStateFlow(0)
     val countdown: StateFlow<Int> = _countdown.asStateFlow()
 
@@ -68,7 +71,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun updateAutoPauseOnCall(v: Boolean) = launch { prefs.updateAutoPauseOnCall(v) }
     fun updateKeepScreenOn(v: Boolean) = launch { prefs.updateKeepScreenOn(v) }
     fun updateShowTouchIndicator(v: Boolean) = launch { prefs.updateShowTouchIndicator(v) }
-    // New
     fun updateCountdownOption(v: CountdownOption) = launch { prefs.updateCountdownOption(v) }
     fun updateMaxDurationMinutes(v: Int) = launch { prefs.updateMaxDurationMinutes(v) }
     fun updateWatermarkText(v: String) = launch { prefs.updateWatermarkText(v) }
@@ -89,12 +91,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         quality: QualityOption,
         audioMode: AudioMode,
     ) {
-        val p = preferences.value
-        val countdownSecs = p.countdownOption.seconds
+        val context = getApplication<Application>()
+        val countdownSecs = preferences.value.countdownOption.seconds
         if (countdownSecs <= 0) {
             startRecording(permissionResultCode, permissionData, quality, audioMode)
             return
         }
+
+        CountdownOverlayService.start(context, countdownSecs)
         viewModelScope.launch {
             for (i in countdownSecs downTo 1) {
                 RecordingSession.setCountdown(i)
@@ -103,6 +107,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             RecordingSession.setCountdown(0)
             _countdown.value = 0
+            CountdownOverlayService.stop(context)
             startRecording(permissionResultCode, permissionData, quality, audioMode)
         }
     }
@@ -110,25 +115,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording(permissionResultCode: Int, permissionData: Intent, quality: QualityOption, audioMode: AudioMode) {
         val context = getApplication<Application>()
         val p = preferences.value
-        val bitrate = when (p.bitrateMode) {
+        val captureSize = resolveCaptureSize(
+            screenWidth = context.resources.displayMetrics.widthPixels,
+            screenHeight = context.resources.displayMetrics.heightPixels,
+            quality = quality,
+        )
+        val requestedFps = p.frameRate.takeIf { it > 0 } ?: quality.frameRate
+        val safeFps = safeFrameRateFor(quality, captureSize.first, captureSize.second, requestedFps)
+        val rawBitrate = when (p.bitrateMode) {
             BitrateMode.CUSTOM -> p.customBitrateMbps * 1_000_000
             BitrateMode.AUTO -> bitrateForQuality(quality)
         }
+        val bitrate = clampBitrate(rawBitrate, captureSize.first, captureSize.second)
         val maxDurationMs = if (p.maxDurationMinutes > 0) p.maxDurationMinutes * 60_000L else 0L
 
         val serviceIntent = Intent(context, ScreenRecordService::class.java).apply {
             action = ScreenRecordService.ACTION_START
             putExtra(ScreenRecordService.EXTRA_RESULT_CODE, permissionResultCode)
             putExtra(ScreenRecordService.EXTRA_DATA, permissionData)
-            putExtra(ScreenRecordService.EXTRA_WIDTH, quality.width)
-            putExtra(ScreenRecordService.EXTRA_HEIGHT, quality.height)
+            putExtra(ScreenRecordService.EXTRA_WIDTH, captureSize.first)
+            putExtra(ScreenRecordService.EXTRA_HEIGHT, captureSize.second)
             putExtra(ScreenRecordService.EXTRA_DENSITY, context.resources.displayMetrics.densityDpi)
-            putExtra(ScreenRecordService.EXTRA_FPS, p.frameRate.takeIf { it > 0 } ?: quality.frameRate)
+            putExtra(ScreenRecordService.EXTRA_FPS, safeFps)
             putExtra(ScreenRecordService.EXTRA_BITRATE, bitrate)
             putExtra(ScreenRecordService.EXTRA_AUDIO_MODE, audioMode.name)
             putExtra(ScreenRecordService.EXTRA_OUTPUT_FOLDER, p.outputFolderName)
             putExtra(ScreenRecordService.EXTRA_ENCODER, p.videoEncoder.name)
-            putExtra(ScreenRecordService.EXTRA_WATERMARK, if (p.watermarkEnabled) p.watermarkText else "")
+            putExtra(ScreenRecordService.EXTRA_WATERMARK, if (p.watermarkEnabled) p.watermarkText.ifBlank { "Virexa Screen" } else "")
             putExtra(ScreenRecordService.EXTRA_MAX_DURATION_MS, maxDurationMs)
             putExtra(ScreenRecordService.EXTRA_SILENCE_AUTO_PAUSE, p.silenceAutoPause)
             putExtra(ScreenRecordService.EXTRA_SILENCE_THRESHOLD_S, p.silenceThresholdSeconds)
@@ -138,7 +151,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(ScreenRecordService.EXTRA_AUTO_START_BUBBLE, p.floatingBubbleEnabled)
         }
         androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
-        RecordingSession.update { it.copy(message = "Iniciando grabación…") }
+        RecordingSession.update {
+            it.copy(message = "Iniciando grabación ${captureSize.first}×${captureSize.second}…")
+        }
     }
 
     fun pauseRecording() = sendAction(ScreenRecordService.ACTION_PAUSE)
@@ -168,7 +183,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun launch(block: suspend () -> Unit) = viewModelScope.launch { block() }
 
-    private fun bitrateForQuality(quality: QualityOption) = when (quality.id) {
-        "720p" -> 4_000_000; "1080p" -> 8_000_000; "1440p" -> 14_000_000; else -> 24_000_000
+    private fun resolveCaptureSize(screenWidth: Int, screenHeight: Int, quality: QualityOption): Pair<Int, Int> {
+        val nativeWidth = screenWidth.coerceAtLeast(2)
+        val nativeHeight = screenHeight.coerceAtLeast(2)
+        val nativeShort = min(nativeWidth, nativeHeight)
+        val nativeLong = max(nativeWidth, nativeHeight)
+        val targetShortLimit = when (quality.id) {
+            "720p" -> 720
+            "1080p" -> 1080
+            "1440p" -> 1440
+            "2160p" -> 2160
+            else -> 1080
+        }
+        val targetShort = min(nativeShort, targetShortLimit)
+        val scale = targetShort.toFloat() / nativeShort.toFloat()
+        val targetLong = (nativeLong * scale).roundToInt()
+
+        return if (nativeWidth <= nativeHeight) {
+            alignEven(targetShort) to alignEven(targetLong)
+        } else {
+            alignEven(targetLong) to alignEven(targetShort)
+        }
     }
+
+    private fun safeFrameRateFor(quality: QualityOption, width: Int, height: Int, requestedFps: Int): Int {
+        val requested = requestedFps.coerceIn(24, 60)
+        val pixels = width.toLong() * height.toLong()
+        return if (quality.id == "1440p" || quality.id == "2160p" || pixels > 3_700_000L) {
+            requested.coerceAtMost(30)
+        } else {
+            requested
+        }
+    }
+
+    private fun clampBitrate(value: Int, width: Int, height: Int): Int {
+        val pixels = width.toLong() * height.toLong()
+        val maxBitrate = when {
+            pixels >= 8_000_000L -> 40_000_000
+            pixels >= 4_000_000L -> 26_000_000
+            pixels >= 2_000_000L -> 18_000_000
+            else -> 10_000_000
+        }
+        return value.coerceIn(2_000_000, maxBitrate)
+    }
+
+    private fun bitrateForQuality(quality: QualityOption) = when (quality.id) {
+        "720p" -> 4_000_000
+        "1080p" -> 8_000_000
+        "1440p" -> 14_000_000
+        else -> 24_000_000
+    }
+
+    private fun alignEven(value: Int): Int = (value.coerceAtLeast(2) / 2) * 2
 }

@@ -41,6 +41,11 @@
             android:foregroundServiceType="specialUse" />
 
         <service
+            android:name=".service.CountdownOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <service
             android:name=".service.VirexaQuickSettingsTileService"
             android:exported="true"
             android:icon="@drawable/ic_qs_virexa"

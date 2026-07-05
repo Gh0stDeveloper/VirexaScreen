@@ -12,7 +12,6 @@ import android.hardware.display.VirtualDisplay
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -24,17 +23,20 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.PowerManager
 import android.provider.MediaStore
-import android.provider.Settings
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.virexa.screen.MainActivity
-import com.virexa.screen.R
 import com.virexa.screen.data.AudioMode
 import com.virexa.screen.data.RecordingRepository
 import com.virexa.screen.data.RecordingSession
 import com.virexa.screen.data.VideoEncoder
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class ScreenRecordService : android.app.Service() {
 
@@ -66,6 +68,11 @@ class ScreenRecordService : android.app.Service() {
         const val EXTRA_AUTO_START_BUBBLE = "extra_auto_start_bubble"
     }
 
+    private data class CaptureSize(val width: Int, val height: Int) {
+        val pixels: Long get() = width.toLong() * height.toLong()
+        val label: String get() = "${width}×${height}"
+    }
+
     private val recorderRepository by lazy { RecordingRepository(applicationContext) }
     private var mediaProjection: MediaProjection? = null
     private var mediaRecorder: MediaRecorder? = null
@@ -76,6 +83,7 @@ class ScreenRecordService : android.app.Service() {
     private var started = false
     private var currentForegroundType = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
     private var wakeLock: PowerManager.WakeLock? = null
+    private var activeWatermarkText: String? = null
 
     // Max duration auto-stop
     private var maxDurationMs = 0L
@@ -132,20 +140,27 @@ class ScreenRecordService : android.app.Service() {
     private fun startCapture(intent: Intent) {
         if (started) return
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
-        val projectionData: Intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+        val projectionData: Intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)!!
-        else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_DATA)!!
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_DATA)!!
+        }
 
-        val width = intent.getIntExtra(EXTRA_WIDTH, 1080)
-        val height = intent.getIntExtra(EXTRA_HEIGHT, 1920)
+        val requestedWidth = intent.getIntExtra(EXTRA_WIDTH, 1080)
+        val requestedHeight = intent.getIntExtra(EXTRA_HEIGHT, 1920)
+        val screenSize = getRealScreenSize()
+        val primarySize = resolveFullScreenSize(requestedWidth, requestedHeight, screenSize.width, screenSize.height)
         val density = intent.getIntExtra(EXTRA_DENSITY, resources.displayMetrics.densityDpi)
-        val fps = intent.getIntExtra(EXTRA_FPS, 60)
-        val bitrate = intent.getIntExtra(EXTRA_BITRATE, 8_000_000)
+        val requestedFps = intent.getIntExtra(EXTRA_FPS, 60)
+        val fps = safeFrameRate(requestedFps, requestedWidth, requestedHeight, primarySize)
+        val bitrate = clampBitrate(intent.getIntExtra(EXTRA_BITRATE, 8_000_000), primarySize)
         val audioMode = runCatching { AudioMode.valueOf(intent.getStringExtra(EXTRA_AUDIO_MODE) ?: AudioMode.MICROPHONE.name) }.getOrDefault(AudioMode.MICROPHONE)
         val encoderEnum = runCatching { VideoEncoder.valueOf(intent.getStringExtra(EXTRA_ENCODER) ?: VideoEncoder.H264.name) }.getOrDefault(VideoEncoder.H264)
         maxDurationMs = intent.getLongExtra(EXTRA_MAX_DURATION_MS, 0L)
         silenceAutoPause = intent.getBooleanExtra(EXTRA_SILENCE_AUTO_PAUSE, false)
         silenceThresholdMs = intent.getIntExtra(EXTRA_SILENCE_THRESHOLD_S, 10) * 1000L
+        activeWatermarkText = intent.getStringExtra(EXTRA_WATERMARK)?.trim().orEmpty().ifBlank { null }
         val noiseSuppressionEnabled = intent.getBooleanExtra(EXTRA_NOISE_SUPPRESSION, false)
         dndEnabled = intent.getBooleanExtra(EXTRA_DND, false)
 
@@ -154,6 +169,8 @@ class ScreenRecordService : android.app.Service() {
 
         try {
             ServiceCompat.startForeground(this, 1, buildNotification("Preparando grabación…", false), currentForegroundType)
+            CountdownOverlayService.stop(this)
+
             val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = mpManager.getMediaProjection(resultCode, projectionData)?.also {
                 it.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
@@ -166,38 +183,67 @@ class ScreenRecordService : android.app.Service() {
             outputUri = destination.uri
             outputPfd = destination.parcelFileDescriptor
 
-            val videoEncoderConst = if (encoderEnum == VideoEncoder.H265) MediaRecorder.VideoEncoder.HEVC else MediaRecorder.VideoEncoder.H264
+            val videoEncoderConst = if (encoderEnum == VideoEncoder.H265) {
+                MediaRecorder.VideoEncoder.HEVC
+            } else {
+                MediaRecorder.VideoEncoder.H264
+            }
 
-            mediaRecorder = MediaRecorder().apply {
-                if (audioMode.usesMicrophone) {
-                    setAudioSource(if (noiseSuppressionEnabled) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC)
+            var actualSize = primarySize
+            var actualFps = fps
+            var actualBitrate = bitrate
+
+            mediaRecorder = runCatching {
+                buildPreparedRecorder(
+                    size = actualSize,
+                    fps = actualFps,
+                    bitrate = actualBitrate,
+                    videoEncoder = videoEncoderConst,
+                    audioMode = audioMode,
+                    noiseSuppressionEnabled = noiseSuppressionEnabled,
+                )
+            }.getOrElse { firstError ->
+                val fallbackSize = fallbackSizeFor(primarySize)
+                actualSize = fallbackSize
+                actualFps = min(actualFps, 30)
+                actualBitrate = clampBitrate(actualBitrate, fallbackSize)
+                RecordingSession.setMessage("Calidad ajustada automáticamente a ${fallbackSize.label}")
+
+                runCatching {
+                    buildPreparedRecorder(
+                        size = actualSize,
+                        fps = actualFps,
+                        bitrate = actualBitrate,
+                        videoEncoder = videoEncoderConst,
+                        audioMode = audioMode,
+                        noiseSuppressionEnabled = noiseSuppressionEnabled,
+                    )
+                }.getOrElse { secondError ->
+                    secondError.addSuppressed(firstError)
+                    throw secondError
                 }
-                setVideoSource(MediaRecorder.VideoSource.SURFACE)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                if (audioMode.usesMicrophone) {
-                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                    setAudioEncodingBitRate(192_000)
-                    setAudioSamplingRate(44_100)
-                    setAudioChannels(2)
-                }
-                setVideoEncoder(videoEncoderConst)
-                setVideoSize(width, height)
-                setVideoFrameRate(fps)
-                setVideoEncodingBitRate(bitrate)
-                if (outputPfd != null) setOutputFile(outputPfd!!.fileDescriptor)
-                else setOutputFile(outputFile!!.absolutePath)
-                prepare()
             }
 
             virtualDisplay = mediaProjection!!.createVirtualDisplay(
-                "VirexaScreenCapture", width, height, density, 0, mediaRecorder!!.surface, null, null
+                "VirexaScreenCapture",
+                actualSize.width,
+                actualSize.height,
+                density,
+                0,
+                mediaRecorder!!.surface,
+                null,
+                null,
             )
             mediaRecorder?.start()
             started = true
 
+            activeWatermarkText?.let { WatermarkOverlayService.start(this, it) }
+
             // Wake lock
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VirexaScreen:RecordingWakeLock").apply { acquire(maxDurationMs.takeIf { it > 0 } ?: 6 * 60 * 60 * 1000L) }
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VirexaScreen:RecordingWakeLock").apply {
+                acquire(maxDurationMs.takeIf { it > 0 } ?: 6 * 60 * 60 * 1000L)
+            }
 
             // DND
             if (dndEnabled) activateDnd()
@@ -212,8 +258,13 @@ class ScreenRecordService : android.app.Service() {
             if (silenceAutoPause && audioMode.usesMicrophone) startSilenceDetection()
 
             RecordingSession.update {
-                it.copy(isRecording = true, isPaused = false, activeFilePath = destination.displayPath, elapsedMs = 0L,
-                    message = if (audioMode.requestsSystemAudio) "Grabando — audio interno sujeto al sistema." else "Grabación iniciada")
+                it.copy(
+                    isRecording = true,
+                    isPaused = false,
+                    activeFilePath = destination.displayPath,
+                    elapsedMs = 0L,
+                    message = buildStartMessage(audioMode, actualSize, actualFps),
+                )
             }
 
             if (intent.getBooleanExtra(EXTRA_AUTO_START_BUBBLE, false)) {
@@ -223,9 +274,49 @@ class ScreenRecordService : android.app.Service() {
             ServiceCompat.startForeground(this, 1, buildNotification("Grabando pantalla", false), currentForegroundType)
         } catch (t: Throwable) {
             timerHandler.removeCallbacks(timerRunnable)
+        WatermarkOverlayService.stop(this)
+            WatermarkOverlayService.stop(this)
             cleanupOutput(shouldDelete = true)
             RecordingSession.update { it.copy(isRecording = false, isPaused = false, message = "No se pudo iniciar: ${t.message}") }
             stopSelf()
+        }
+    }
+
+    private fun buildPreparedRecorder(
+        size: CaptureSize,
+        fps: Int,
+        bitrate: Int,
+        videoEncoder: Int,
+        audioMode: AudioMode,
+        noiseSuppressionEnabled: Boolean,
+    ): MediaRecorder {
+        val recorder = MediaRecorder()
+        try {
+            recorder.apply {
+                if (audioMode.usesMicrophone) {
+                    setAudioSource(if (noiseSuppressionEnabled) MediaRecorder.AudioSource.VOICE_RECOGNITION else MediaRecorder.AudioSource.MIC)
+                }
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                if (audioMode.usesMicrophone) {
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioEncodingBitRate(160_000)
+                    setAudioSamplingRate(44_100)
+                    setAudioChannels(2)
+                }
+                setVideoEncoder(videoEncoder)
+                setVideoSize(size.width, size.height)
+                setVideoFrameRate(fps)
+                setVideoEncodingBitRate(bitrate)
+                if (outputPfd != null) setOutputFile(outputPfd!!.fileDescriptor)
+                else setOutputFile(outputFile!!.absolutePath)
+                prepare()
+            }
+            return recorder
+        } catch (t: Throwable) {
+            runCatching { recorder.reset() }
+            runCatching { recorder.release() }
+            throw t
         }
     }
 
@@ -258,7 +349,8 @@ class ScreenRecordService : android.app.Service() {
                 }
                 Thread.sleep(100)
             }
-            record.stop(); record.release()
+            record.stop()
+            record.release()
         }.also { it.isDaemon = true; it.start() }
     }
 
@@ -288,7 +380,9 @@ class ScreenRecordService : android.app.Service() {
                 RecordingSession.update { it.copy(isPaused = true, message = "Grabación en pausa") }
                 updateNotification(true)
             }
-        } catch (t: Throwable) { RecordingSession.setMessage("No se pudo pausar: ${t.message}") }
+        } catch (t: Throwable) {
+            RecordingSession.setMessage("No se pudo pausar: ${t.message}")
+        }
     }
 
     private fun resumeCapture() {
@@ -296,14 +390,20 @@ class ScreenRecordService : android.app.Service() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 mediaRecorder?.resume()
-                if (pauseStartMs > 0) { pausedAccumulatedMs += System.currentTimeMillis() - pauseStartMs; pauseStartMs = 0L }
-                recordingStartMs = System.currentTimeMillis() - pausedAccumulatedMs; pausedAccumulatedMs = 0L
+                if (pauseStartMs > 0) {
+                    pausedAccumulatedMs += System.currentTimeMillis() - pauseStartMs
+                    pauseStartMs = 0L
+                }
+                recordingStartMs = System.currentTimeMillis() - pausedAccumulatedMs
+                pausedAccumulatedMs = 0L
                 lastAudioActivityMs = System.currentTimeMillis()
                 timerHandler.post(timerRunnable)
                 RecordingSession.update { it.copy(isPaused = false, silenceDetected = false, message = "Grabación reanudada") }
                 updateNotification(false)
             }
-        } catch (t: Throwable) { RecordingSession.setMessage("No se pudo reanudar: ${t.message}") }
+        } catch (t: Throwable) {
+            RecordingSession.setMessage("No se pudo reanudar: ${t.message}")
+        }
     }
 
     private fun stopCapture() {
@@ -316,6 +416,7 @@ class ScreenRecordService : android.app.Service() {
         runCatching { silenceRunnable?.let { silenceHandler.removeCallbacks(it) } }
         runCatching { mediaProjection?.unregisterCallback(projectionCallback) }
         deactivateDnd()
+        WatermarkOverlayService.stop(this)
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
 
@@ -323,25 +424,44 @@ class ScreenRecordService : android.app.Service() {
         try { mediaRecorder?.apply { stop(); reset(); release() } } catch (t: Throwable) { stopError = t }
         runCatching { virtualDisplay?.release() }
         runCatching { mediaProjection?.stop() }
-        mediaRecorder = null; virtualDisplay = null; mediaProjection = null; started = false
+        mediaRecorder = null
+        virtualDisplay = null
+        mediaProjection = null
+        started = false
 
         val saved = outputUri?.toString() ?: outputFile?.absolutePath
         cleanupOutput(shouldDelete = stopError != null)
-        RecordingSession.update { it.copy(isRecording = false, isPaused = false, activeFilePath = saved, elapsedMs = 0L, countdown = 0, silenceDetected = false, message = if (saved != null) message else "Grabación finalizada") }
+        RecordingSession.update {
+            it.copy(
+                isRecording = false,
+                isPaused = false,
+                activeFilePath = saved,
+                elapsedMs = 0L,
+                countdown = 0,
+                silenceDetected = false,
+                message = if (saved != null) message else "Grabación finalizada",
+            )
+        }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun cleanupOutput(shouldDelete: Boolean) {
-        val uri = outputUri; val pfd = outputPfd; val file = outputFile
+        val uri = outputUri
+        val pfd = outputPfd
+        val file = outputFile
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uri != null) {
             runCatching {
                 if (shouldDelete) contentResolver.delete(uri, null, null)
                 else contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
             }
-        } else if (shouldDelete) runCatching { file?.delete() }
+        } else if (shouldDelete) {
+            runCatching { file?.delete() }
+        }
         runCatching { pfd?.close() }
-        outputFile = null; outputUri = null; outputPfd = null
+        outputFile = null
+        outputUri = null
+        outputPfd = null
     }
 
     private fun updateNotification(paused: Boolean) {
@@ -350,9 +470,24 @@ class ScreenRecordService : android.app.Service() {
     }
 
     private fun buildNotification(text: String, isPaused: Boolean): Notification {
-        val openPi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val pauseResumePi = PendingIntent.getService(this, 1, Intent(this, ScreenRecordService::class.java).apply { action = if (isPaused) ACTION_RESUME else ACTION_PAUSE }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val stopPi = PendingIntent.getService(this, 2, Intent(this, ScreenRecordService::class.java).apply { action = ACTION_STOP }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val openPi = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val pauseResumePi = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, ScreenRecordService::class.java).apply { action = if (isPaused) ACTION_RESUME else ACTION_PAUSE },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val stopPi = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, ScreenRecordService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val elapsed = RecordingSession.uiState.value.elapsedMs
         val timerStr = if (elapsed > 0) " · ${formatElapsed(elapsed)}" else ""
 
@@ -361,7 +496,8 @@ class ScreenRecordService : android.app.Service() {
             .setContentText("$text$timerStr")
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setContentIntent(openPi)
-            .setOngoing(true).setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setStyle(MediaStyle().setShowActionsInCompactView(0, 1))
@@ -381,11 +517,15 @@ class ScreenRecordService : android.app.Service() {
             )
         }
     }
-    private fun closeBubble() { FloatingBubbleService.stop(this) }
+
+    private fun closeBubble() {
+        FloatingBubbleService.stop(this)
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         timerHandler.removeCallbacks(timerRunnable)
+        runCatching { silenceRunnable?.let { silenceHandler.removeCallbacks(it) } }
         wakeLock?.let { if (it.isHeld) it.release() }
         runCatching { mediaRecorder?.release() }
         runCatching { virtualDisplay?.release() }
@@ -393,8 +533,83 @@ class ScreenRecordService : android.app.Service() {
         runCatching { outputPfd?.close() }
     }
 
+    private fun getRealScreenSize(): CaptureSize {
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            CaptureSize(alignEven(bounds.width()), alignEven(bounds.height()))
+        } else {
+            @Suppress("DEPRECATION")
+            val metrics = DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
+            CaptureSize(alignEven(metrics.widthPixels), alignEven(metrics.heightPixels))
+        }
+    }
+
+    private fun resolveFullScreenSize(requestedWidth: Int, requestedHeight: Int, screenWidth: Int, screenHeight: Int): CaptureSize {
+        val nativeWidth = screenWidth.coerceAtLeast(2)
+        val nativeHeight = screenHeight.coerceAtLeast(2)
+        val nativeShort = min(nativeWidth, nativeHeight)
+        val nativeLong = max(nativeWidth, nativeHeight)
+        val requestedShort = min(requestedWidth.coerceAtLeast(2), requestedHeight.coerceAtLeast(2))
+        val targetShort = min(nativeShort, requestedShort)
+        val scale = targetShort.toFloat() / nativeShort.toFloat()
+        val targetLong = (nativeLong * scale).roundToInt()
+
+        return if (nativeWidth <= nativeHeight) {
+            CaptureSize(alignEven(targetShort), alignEven(targetLong))
+        } else {
+            CaptureSize(alignEven(targetLong), alignEven(targetShort))
+        }
+    }
+
+    private fun fallbackSizeFor(size: CaptureSize): CaptureSize {
+        val shortEdge = min(size.width, size.height)
+        if (shortEdge <= 720) return size
+
+        val fallbackShort = if (shortEdge > 1080) 1080 else 720
+        val longEdge = max(size.width, size.height)
+        val fallbackLong = (longEdge * (fallbackShort.toFloat() / shortEdge.toFloat())).roundToInt()
+
+        return if (size.width <= size.height) {
+            CaptureSize(alignEven(fallbackShort), alignEven(fallbackLong))
+        } else {
+            CaptureSize(alignEven(fallbackLong), alignEven(fallbackShort))
+        }
+    }
+
+    private fun safeFrameRate(requestedFps: Int, requestedWidth: Int, requestedHeight: Int, size: CaptureSize): Int {
+        val requested = requestedFps.coerceIn(24, 60)
+        val requestedLongEdge = max(requestedWidth, requestedHeight)
+        return if (requestedLongEdge >= 2560 || size.pixels > 3_700_000L) {
+            requested.coerceAtMost(30)
+        } else {
+            requested
+        }
+    }
+
+    private fun clampBitrate(value: Int, size: CaptureSize): Int {
+        val maxBitrate = when {
+            size.pixels >= 8_000_000L -> 40_000_000
+            size.pixels >= 4_000_000L -> 26_000_000
+            size.pixels >= 2_000_000L -> 18_000_000
+            else -> 10_000_000
+        }
+        return value.coerceIn(2_000_000, maxBitrate)
+    }
+
+    private fun buildStartMessage(audioMode: AudioMode, size: CaptureSize, fps: Int): String {
+        val audioText = if (audioMode.requestsSystemAudio) " · audio interno sujeto al sistema" else ""
+        val watermarkText = if (activeWatermarkText.isNullOrBlank()) "" else " · marca de agua activa"
+        return "Grabando pantalla completa ${size.label} @ ${fps}fps$audioText$watermarkText"
+    }
+
+    private fun alignEven(value: Int): Int = (value.coerceAtLeast(2) / 2) * 2
+
     private fun formatElapsed(ms: Long): String {
-        val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+        val s = ms / 1000
+        val h = s / 3600
+        val m = (s % 3600) / 60
+        val sec = s % 60
         return if (h > 0) "%02d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
     }
 }

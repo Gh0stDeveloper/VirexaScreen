@@ -1,7 +1,7 @@
 package com.virexa.screen.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -123,7 +123,7 @@ fun VirexaHomeScreen(
                         )
                         Spacer(Modifier.weight(1f))
                         if (isRecording) {
-                            Text(formatElapsed(recordingState.elapsedMs), color = accent, fontWeight = FontWeight.Black)
+                            Text(formatHomeElapsed(recordingState.elapsedMs), color = accent, fontWeight = FontWeight.Black)
                         }
                     }
 
@@ -248,7 +248,7 @@ private fun SummaryLine(label: String, value: String) {
     }
 }
 
-private fun formatElapsed(ms: Long): String {
+private fun formatHomeElapsed(ms: Long): String {
     if (ms <= 0L) return "00:00"
     val totalSec = ms / 1000
     val h = totalSec / 3600

@@ -63,7 +63,9 @@ jobs:
           KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          # This JKS uses the store password for its private key as well.
+          # Keeping a second stale secret here made Gradle fail at packageRelease.
+          KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: 📦 Preparar APK

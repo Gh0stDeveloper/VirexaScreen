@@ -47,7 +47,16 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: 🧪 Validar proyecto
-        run: ./gradlew lintDebug testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          set +e
+          ./gradlew lintDebug testDebugUnitTest --no-daemon --stacktrace
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ] && [ -f app/build/reports/lint-results-debug.xml ]; then
+            echo "::group::Errores completos de Android Lint"
+            grep -B 2 -A 14 'severity="Error"' app/build/reports/lint-results-debug.xml || true
+            echo "::endgroup::"
+          fi
+          exit "$STATUS"
 
       - name: 🛠️ Compilar APK Release firmado
         env:

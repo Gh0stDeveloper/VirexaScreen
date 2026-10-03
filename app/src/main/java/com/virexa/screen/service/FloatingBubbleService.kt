@@ -111,6 +111,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
         NotificationHelper.ensureChannels(this)
         if (intent?.action == ACTION_CLOSE) {
             stopSelf()

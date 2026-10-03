@@ -2,6 +2,9 @@ package com.virexa.screen.ui
 
 import android.app.Application
 import android.content.Intent
+import android.os.Build
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.virexa.screen.data.*
@@ -115,9 +118,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording(permissionResultCode: Int, permissionData: Intent, quality: QualityOption, audioMode: AudioMode) {
         val context = getApplication<Application>()
         val p = preferences.value
+        val screenSize = getPhysicalScreenSize(context)
         val captureSize = resolveCaptureSize(
-            screenWidth = context.resources.displayMetrics.widthPixels,
-            screenHeight = context.resources.displayMetrics.heightPixels,
+            screenWidth = screenSize.first,
+            screenHeight = screenSize.second,
             quality = quality,
         )
         val requestedFps = p.frameRate.takeIf { it > 0 } ?: quality.frameRate
@@ -203,6 +207,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             alignEven(targetShort) to alignEven(targetLong)
         } else {
             alignEven(targetLong) to alignEven(targetShort)
+        }
+    }
+
+    private fun getPhysicalScreenSize(context: Application): Pair<Int, Int> {
+        val windowManager = context.getSystemService(WindowManager::class.java)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            @Suppress("DEPRECATION")
+            val metrics = DisplayMetrics().also { windowManager.defaultDisplay.getRealMetrics(it) }
+            metrics.widthPixels to metrics.heightPixels
         }
     }
 

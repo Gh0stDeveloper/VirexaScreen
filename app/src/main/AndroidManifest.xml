@@ -38,12 +38,20 @@
         <service
             android:name=".service.FloatingBubbleService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Interactive draggable controls for active screen recordings" />
+        </service>
 
         <service
             android:name=".service.CountdownOverlayService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Short on-screen countdown before a user-started recording" />
+        </service>
 
         <service
             android:name=".service.VirexaQuickSettingsTileService"

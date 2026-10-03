@@ -60,7 +60,9 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.virexa.screen.MainActivity
 import com.virexa.screen.R
+import com.virexa.screen.data.PreferencesRepository
 import com.virexa.screen.data.RecordingSession
+import com.virexa.screen.data.UserPreferences
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -99,6 +101,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     private lateinit var windowManager: WindowManager
+    private val preferencesRepository by lazy { PreferencesRepository(applicationContext) }
     private var bubbleView: ComposeView? = null
     private var params: WindowManager.LayoutParams? = null
 
@@ -139,6 +142,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
             WindowManager.LayoutParams.WRAP_CONTENT,
             overlayType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
@@ -153,7 +157,10 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
             setViewTreeSavedStateRegistryOwner(this@FloatingBubbleService)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
             setContent {
+                val preferences by preferencesRepository.preferencesFlow.collectAsState(initial = UserPreferences())
                 BubbleRoot(
+                    showQuickControls = preferences.showQuickControls,
+                    showTimer = preferences.showTimerOnBubble,
                     onOpenApp = ::openApp,
                     onPause = { sendRecordAction(ScreenRecordService.ACTION_PAUSE) },
                     onResume = { sendRecordAction(ScreenRecordService.ACTION_RESUME) },
@@ -161,6 +168,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
                     onClose = { stopSelf() },
                     onDrag = ::offsetBy,
                     onDragEnd = ::snapToEdge,
+                    onSizeChanged = ::keepOnScreen,
                 )
             }
         }
@@ -169,6 +177,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
             bubbleView = null
             throw it
         }
+        view.post { snapToEdge() }
     }
 
     private fun offsetBy(dx: Float, dy: Float) {
@@ -180,12 +189,20 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     private fun snapToEdge() {
+        keepOnScreen(snapToNearestEdge = true)
+    }
+
+    private fun keepOnScreen() {
+        bubbleView?.post { keepOnScreen(snapToNearestEdge = false) }
+    }
+
+    private fun keepOnScreen(snapToNearestEdge: Boolean) {
         val p = params ?: return
         val view = bubbleView ?: return
         val screenWidth: Int
         val screenHeight: Int
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val bounds = windowManager.currentWindowMetrics.bounds
+            val bounds = windowManager.maximumWindowMetrics.bounds
             screenWidth = bounds.width()
             screenHeight = bounds.height()
         } else {
@@ -200,8 +217,13 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
         val margin = 16.dpToPx()
         val viewWidth = max(view.width, 56.dpToPx())
         val viewHeight = max(view.height, 56.dpToPx())
-        p.x = if (p.x + viewWidth / 2 < screenWidth / 2) margin else screenWidth - viewWidth - margin
-        p.y = p.y.coerceIn(margin * 2, screenHeight - viewHeight - (margin * 4))
+        p.x = if (snapToNearestEdge) {
+            if (p.x + viewWidth / 2 < screenWidth / 2) margin else screenWidth - viewWidth - margin
+        } else {
+            p.x.coerceIn(margin, max(margin, screenWidth - viewWidth - margin))
+        }
+        val maxY = max(margin * 2, screenHeight - viewHeight - (margin * 4))
+        p.y = p.y.coerceIn(margin * 2, maxY)
         runCatching { windowManager.updateViewLayout(view, p) }
     }
 
@@ -232,7 +254,7 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
         return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_BUBBLE_ID)
             .setContentTitle("Virexa Screen")
             .setContentText("Control flotante profesional")
-            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setSmallIcon(R.drawable.ic_qs_virexa)
             .setContentIntent(openPi)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -245,6 +267,8 @@ class FloatingBubbleService : LifecycleService(), SavedStateRegistryOwner {
 
 @Composable
 private fun BubbleRoot(
+    showQuickControls: Boolean,
+    showTimer: Boolean,
     onOpenApp: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -252,11 +276,15 @@ private fun BubbleRoot(
     onClose: () -> Unit,
     onDrag: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
+    onSizeChanged: () -> Unit,
 ) {
     val state by RecordingSession.uiState.collectAsState()
     var minimized by remember { mutableStateOf(false) }
     val currentDrag by rememberUpdatedState(onDrag)
     val currentDragEnd by rememberUpdatedState(onDragEnd)
+    val currentSizeChanged by rememberUpdatedState(onSizeChanged)
+
+    LaunchedEffect(minimized) { currentSizeChanged() }
 
     MaterialTheme {
         AnimatedContent(targetState = minimized, label = "bubble_mode") { isMinimized ->
@@ -344,7 +372,7 @@ private fun BubbleRoot(
                                         fontWeight = FontWeight.Bold,
                                     )
                                     Text(
-                                        text = if (state.isRecording) formatElapsed(state.elapsedMs) else "Control flotante",
+                                        text = if (state.isRecording && showTimer) formatElapsed(state.elapsedMs) else "Control flotante",
                                         color = Color(0xFF9FA4AD),
                                         style = MaterialTheme.typography.labelMedium,
                                     )
@@ -360,28 +388,31 @@ private fun BubbleRoot(
                             }
                         }
 
-                        HorizontalDivider(color = Color(0x22FFFFFF))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            BubbleAction(
-                                icon = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                label = if (state.isPaused) "Reanudar" else "Pausar",
-                                tint = if (state.isPaused) Color(0xFFFFB340) else Color(0xFFFF5A52),
-                                enabled = state.isRecording,
-                                onClick = if (state.isPaused) onResume else onPause,
-                                modifier = Modifier.weight(1f),
-                            )
-                            BubbleAction(
-                                icon = Icons.Default.Stop,
-                                label = "Detener",
-                                tint = Color(0xFFFF3B30),
-                                enabled = state.isRecording,
-                                onClick = onStop,
-                                modifier = Modifier.weight(1f),
-                            )
+                        AnimatedVisibility(visible = showQuickControls) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                HorizontalDivider(color = Color(0x22FFFFFF))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    BubbleAction(
+                                        icon = if (state.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                        label = if (state.isPaused) "Reanudar" else "Pausar",
+                                        tint = if (state.isPaused) Color(0xFFFFB340) else Color(0xFFFF5A52),
+                                        enabled = state.isRecording,
+                                        onClick = if (state.isPaused) onResume else onPause,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    BubbleAction(
+                                        icon = Icons.Default.Stop,
+                                        label = "Detener",
+                                        tint = Color(0xFFFF3B30),
+                                        enabled = state.isRecording,
+                                        onClick = onStop,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
                         }
 
                         Row(

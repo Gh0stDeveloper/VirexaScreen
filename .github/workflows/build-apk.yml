@@ -21,6 +21,10 @@ jobs:
         with:
           distribution: "temurin"
           java-version: "17"
+          cache: "gradle"
+
+      - name: ⚡ Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: 🔐 Restaurar keystore
         run: |
@@ -42,23 +46,42 @@ jobs:
       - name: 🔧 Dar permisos a gradlew
         run: chmod +x ./gradlew
 
-      - name: 🛠️ Compilar APK Release
+      - name: 🧪 Validar proyecto
+        run: ./gradlew lintDebug testDebugUnitTest --no-daemon --stacktrace
+
+      - name: 🛠️ Compilar APK Release firmado
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/app/ghostnexora-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      # ⬇️ Aquí creas el release y adjuntas el APK
+      - name: 📦 Preparar APK
+        run: |
+          VERSION_NAME=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          cp app/build/outputs/apk/release/app-release.apk "VirexaScreen-${VERSION_NAME}.apk"
+          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+
+      - name: ⬆️ Guardar APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: VirexaScreen-${{ env.VERSION_NAME }}
+          path: VirexaScreen-${{ env.VERSION_NAME }}.apk
+          if-no-files-found: error
+          retention-days: 30
+
       - name: 🚀 Crear Release y subir APK
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
-          tag_name: release-${{ github.run_number }}
-          name: Release ${{ github.run_number }}
+          files: VirexaScreen-${{ env.VERSION_NAME }}.apk
+          tag_name: v${{ env.VERSION_NAME }}-build.${{ github.run_number }}
+          name: Virexa Screen ${{ env.VERSION_NAME }}
           body: |
-            Construcción automática desde el commit `${{ github.sha }}`
-            Ejecución #${{ github.run_number }}
+            APK release firmado de Virexa Screen `${{ env.VERSION_NAME }}`.
+
+            - Compilación: #${{ github.run_number }}
+            - Commit: `${{ github.sha }}`
+            - Incluye controles flotantes interactivos, captura a pantalla completa y marca de agua estable.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

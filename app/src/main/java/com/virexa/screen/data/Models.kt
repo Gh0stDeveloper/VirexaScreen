@@ -78,7 +78,7 @@ data class QualityOption(
 data class UserPreferences(
     val profileName: String = "Usuario",
     val language: LanguageOption = LanguageOption.SPANISH,
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DARK,
     val defaultQualityId: String = QualityOption.default().id,
     val defaultAudioMode: AudioMode = AudioMode.MICROPHONE,
     val floatingBubbleEnabled: Boolean = true,

@@ -47,7 +47,7 @@ class PreferencesRepository(private val context: Context) {
         UserPreferences(
             profileName = p[Keys.profileName] ?: "Usuario",
             language = enumOf(p[Keys.language], LanguageOption.SPANISH),
-            themeMode = enumOf(p[Keys.themeMode], ThemeMode.SYSTEM),
+            themeMode = enumOf(p[Keys.themeMode], ThemeMode.DARK),
             defaultQualityId = p[Keys.defaultQualityId] ?: QualityOption.default().id,
             defaultAudioMode = enumOf(p[Keys.defaultAudioMode], AudioMode.MICROPHONE),
             floatingBubbleEnabled = p[Keys.floatingBubbleEnabled] ?: true,

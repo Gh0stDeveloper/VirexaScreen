@@ -25,6 +25,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.virexa.screen.MainActivity
+import com.virexa.screen.R
 import com.virexa.screen.data.RecordingSession
 
 class CountdownOverlayService : Service() {
@@ -103,7 +104,7 @@ class CountdownOverlayService : Service() {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
             showOverlay(seconds)
-            START_STICKY
+            START_NOT_STICKY
         }.getOrElse {
             RecordingSession.setMessage("No se pudo abrir el contador flotante: ${it.message}")
             stopSelf()
@@ -198,7 +199,7 @@ class CountdownOverlayService : Service() {
         return NotificationCompat.Builder(this, NotificationHelper.CHANNEL_BUBBLE_ID)
             .setContentTitle("Virexa Screen")
             .setContentText("Cuenta regresiva flotante")
-            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setSmallIcon(R.drawable.ic_qs_virexa)
             .setContentIntent(openPi)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

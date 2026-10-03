@@ -1,6 +1,9 @@
 package com.virexa.screen.service
 
+import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -48,14 +51,14 @@ class VirexaQuickSettingsTileService : TileService() {
                 if (Settings.canDrawOverlays(this)) {
                     FloatingBubbleService.start(this)
                     // Open app to start the screen capture permission flow
-                    startActivityAndCollapse(
+                    launchAndCollapse(
                         Intent(this, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                             putExtra("action", "start_recording")
                         }
                     )
                 } else {
-                    startActivityAndCollapse(
+                    launchAndCollapse(
                         Intent(this, MainActivity::class.java).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         }
@@ -78,7 +81,7 @@ class VirexaQuickSettingsTileService : TileService() {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "Virexa · Grabando"
                 tile.contentDescription = "Toca para detener la grabación"
-                if (Build.VERSION_INT >= 29) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tile.subtitle = formatElapsed(state.elapsedMs)
                 }
             }
@@ -86,7 +89,7 @@ class VirexaQuickSettingsTileService : TileService() {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "Virexa · En pausa"
                 tile.contentDescription = "Toca para reanudar la grabación"
-                if (Build.VERSION_INT >= 29) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tile.subtitle = "Pausado ${formatElapsed(state.elapsedMs)}"
                 }
             }
@@ -97,7 +100,7 @@ class VirexaQuickSettingsTileService : TileService() {
                     "Toca para abrir e iniciar grabación"
                 else
                     "Permiso de superposición requerido"
-                if (Build.VERSION_INT >= 29) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     tile.subtitle = if (Settings.canDrawOverlays(this)) "Listo" else "Sin permiso"
                 }
             }
@@ -105,8 +108,20 @@ class VirexaQuickSettingsTileService : TileService() {
         tile.updateTile()
     }
 
-    private object Build {
-        val VERSION_INT = android.os.Build.VERSION.SDK_INT
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    private fun launchAndCollapse(intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                20,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            startActivityAndCollapse(pendingIntent)
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
+        }
     }
 
     private fun formatElapsed(ms: Long): String {

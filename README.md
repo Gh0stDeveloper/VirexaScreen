@@ -9,7 +9,7 @@ Modern, lightweight, and powerful screen recording application built with Kotlin
 [![Android](https://img.shields.io/badge/Android-8.0%2B-green?style=for-the-badge&logo=android)](https://developer.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.x-purple?style=for-the-badge&logo=kotlin)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-blue?style=for-the-badge)](https://developer.android.com/jetpack/compose)
-[![License](https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge)]()
+[![License](https://img.shields.io/github/license/Gh0stDeveloper/VirexaScreen?style=for-the-badge)](LICENSE)
 
 </div>
 
@@ -256,7 +256,7 @@ https://developer.android.com/reference/android/media/projection/MediaProjection
 ### Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/VirexaScreen.git
+git clone https://github.com/Gh0stDeveloper/VirexaScreen.git
 ```
 
 ### Open Project
@@ -335,6 +335,8 @@ Android Studio Meerkat+
 
 ## 📊 Performance Goals
 
+**Targets only (not measured benchmark results).** These goals must not be presented as achieved performance without reproducible device tests and published evidence.
+
 | Feature | Target |
 |----------|----------|
 | Startup Time | < 2 seconds |
@@ -346,16 +348,18 @@ Android Studio Meerkat+
 
 ## 👨‍💻 Developer
 
-### Pedro Avendaño
+### Ghost Developer (Gh0stDeveloper)
 
-Founder and Developer of Virexa Screen.
+Independent developer of Virexa Screen.
 
-Focused on building modern Android applications using scalable architectures, Jetpack Compose, and modern Android development practices.
+Focused on native Android engineering with Kotlin and Jetpack Compose. Web platforms and developer tools are complementary areas of work.
 
 ### Contact
 
 - GitHub: https://github.com/Gh0stDeveloper
 - Email: ghostnexora@gmail.com
+- Portfolio: https://ghostdeveloper.vercel.app/
+- Project overview: https://ghostdeveloper.vercel.app/proyectos/virexa
 
 ---
 
